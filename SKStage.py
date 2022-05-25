@@ -101,6 +101,7 @@ class StageController:
             return False
 
     def set_logical_org(self):
+        pass
 
     def close(self):
         self.ser.close()
