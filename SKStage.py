@@ -16,21 +16,22 @@ class StageController:
         self.ser = serial.Serial(port, baud_rate)
         self.end = '\r\n'
 
-    def send(self, order):
+    def send_recv(self, order):
         print(order)
         order += self.end
         self.ser.write(order.encode)
-
-    def recv(self):
         msg = self.ser.readline()
-        print(msg)
+        msg.strip(self.end)
+        print(f'\t-> {msg}')
         return msg
 
     def get_pos(self):
         order = 'Q:'
-        self.send(order)
-        msg = self.recv()
-        return True
+        msg = self.send_recv(order)
+        if msg == 'OK':
+            return True
+        else:
+            return False
 
     def move_rel(self, values: list):
         if len(values) != 3:
@@ -38,9 +39,11 @@ class StageController:
             print("move value list must content three values")
             raise ValueError
         order = 'M:' + val2str(values)
-        self.send(order)
-        msg = self.recv()
-        return True
+        msg = self.send_recv(order)
+        if msg == 'OK':
+            return True
+        else:
+            return False
 
     def move_abs(self, values: list):
         if len(values) != 3:
@@ -48,15 +51,19 @@ class StageController:
             print('move value list must content three values')
             raise ValueError
         order = 'A:' + val2str(values)
-        self.send(order)
-        msg = self.recv()
-        return True
+        msg = self.send_recv(order)
+        if msg == 'OK':
+            return True
+        else:
+            return False
 
     def stop_emergency(self):
         order = 'L:E'
-        self.send(order)
-        msg = self.recv()
-        return True
+        msg = self.send_recv(order)
+        if msg == 'OK':
+            return True
+        else:
+            return False
 
     def set_speed(self, axis: int, slow: float, fast: float, rate: float):
         if axis not in [0, 1, 2, 3]:
@@ -71,9 +78,29 @@ class StageController:
             order = 'D:WS' + str(abs(slow)) + 'F' + str(abs(fast)) + 'R' + str(abs(rate))
         else:
             order = 'D:' + str(axis) + 'S' + str(abs(slow)) + 'F' + str(abs(fast)) + 'R' + str(abs(rate))
-        self.send(order)
-        msg = self.recv()
-        return True
+        msg = self.send_recv(order)
+        if msg == 'OK':
+            return True
+        else:
+            return False
+
+    def go_machine_org(self):
+        order = 'H:1'
+        msg = self.send_recv(order)
+        if msg == 'OK':
+            return True
+        else:
+            return False
+
+    def go_logical_org(self):
+        order = 'R:1'
+        msg = self.send_recv(order)
+        if msg == 'OK':
+            return True
+        else:
+            return False
+
+    def set_logical_org(self):
 
     def close(self):
         self.ser.close()

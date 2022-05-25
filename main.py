@@ -1,11 +1,12 @@
 import SKStage
+from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors, CameraCapabilities
+import matplotlib.pyplot as plt
 
 
 def main():
-    sc = SKStage.StageController('COM6', 38400)
-    sc.move_rel([10, 0, 0])
-    sc.move_abs([100, 100, 100])
-    sc.stop_emergency()
+    sc = SKStage.StageController('COM6', 9600)
+    sdk = atmcd()
+    codes = atmcd_codes
 
 
 if __name__ == '__main__':
