@@ -16,15 +16,30 @@ class StageController:
         self.ser = serial.Serial(port, baud_rate)
         self.end = '\r\n'
 
+    def send(self, order):
+        print(order)
+        order += self.end
+        self.ser.write(order.encode)
+
+    def recv(self):
+        msg = self.ser.readline()
+        print(msg)
+        return msg
+
+    def get_pos(self):
+        order = 'Q:'
+        self.send(order)
+        msg = self.recv()
+        return True
+
     def move_rel(self, values: list):
         if len(values) != 3:
             self.close()
             print("move value list must content three values")
             raise ValueError
-        order = 'M:' + val2str(values) + self.end
-        print(order)
-        self.ser.write(order.encode())
-        print(self.ser.readline())
+        order = 'M:' + val2str(values)
+        self.send(order)
+        msg = self.recv()
         return True
 
     def move_abs(self, values: list):
@@ -32,17 +47,15 @@ class StageController:
             self.close()
             print('move value list must content three values')
             raise ValueError
-        order = 'A:' + val2str(values) + self.end
-        print(order)
-        self.ser.write(order.encode())
-        print(self.ser.readline())
+        order = 'A:' + val2str(values)
+        self.send(order)
+        msg = self.recv()
         return True
 
     def stop_emergency(self):
         order = 'L:E'
-        print(order)
-        self.ser.write(order.encode())
-        print(self.ser.readline())
+        self.send(order)
+        msg = self.recv()
         return True
 
     def set_speed(self, axis: int, slow: float, fast: float, rate: float):
@@ -58,11 +71,11 @@ class StageController:
             order = 'D:WS' + str(abs(slow)) + 'F' + str(abs(fast)) + 'R' + str(abs(rate))
         else:
             order = 'D:' + str(axis) + 'S' + str(abs(slow)) + 'F' + str(abs(fast)) + 'R' + str(abs(rate))
-        print(order)
-        self.ser.write(order.encode())
-        print(self.ser.readline())
+        self.send(order)
+        msg = self.recv()
         return True
 
     def close(self):
         self.ser.close()
+        print('closed')
         return True
