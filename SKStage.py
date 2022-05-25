@@ -1,7 +1,7 @@
 import serial
 
 
-def val2str(values:list):
+def val2str(values: list):
     s = ''
     for value in values:
         if value < 0:
@@ -13,7 +13,7 @@ def val2str(values:list):
 
 class StageController:
     def __init__(self, port, baud_rate):
-        # self.ser = serial.Serial(port, baud_rate)
+        self.ser = serial.Serial(port, baud_rate)
         self.end = '\r\n'
 
     def move_rel(self, values: list):
@@ -23,8 +23,9 @@ class StageController:
             raise ValueError
         order = 'M:' + val2str(values) + self.end
         print(order)
-        # self.ser.write(order.encode())
-        # print(self.ser.readline())
+        self.ser.write(order.encode())
+        print(self.ser.readline())
+        return True
 
     def move_abs(self, values: list):
         if len(values) != 3:
@@ -33,16 +34,18 @@ class StageController:
             raise ValueError
         order = 'A:' + val2str(values) + self.end
         print(order)
-        # self.ser.write(order.encode())
-        # print(self.ser.readline())
+        self.ser.write(order.encode())
+        print(self.ser.readline())
+        return True
 
     def stop_emergency(self):
         order = 'L:E'
         print(order)
-        # self.ser.write(order.encode())
-        # print(self.ser.readline())
+        self.ser.write(order.encode())
+        print(self.ser.readline())
+        return True
 
-    def set_speed(self, axis, slow, fast, rate):
+    def set_speed(self, axis: int, slow: float, fast: float, rate: float):
         if axis not in [0, 1, 2, 3]:
             self.close()
             print('axis number must be 0 ~ 3')
@@ -51,11 +54,15 @@ class StageController:
             self.close()
             print('speed value out of range.\n1<=slow<=500000, 1<=fast<=500000, 0<=rate<=1000.')
             raise ValueError
-        order = 'L:' + axis + 'S' + abs(slow) + 'F' + abs(fast) + 'R' + abs(rate)
+        if axis == 0:
+            order = 'D:WS' + str(abs(slow)) + 'F' + str(abs(fast)) + 'R' + str(abs(rate))
+        else:
+            order = 'D:' + str(axis) + 'S' + str(abs(slow)) + 'F' + str(abs(fast)) + 'R' + str(abs(rate))
         print(order)
-        # self.ser.write(order.encode())
-        # print(self.ser.readline())
+        self.ser.write(order.encode())
+        print(self.ser.readline())
+        return True
 
     def close(self):
-        pass
-        # self.ser.close()
+        self.ser.close()
+        return True
