@@ -1,6 +1,3 @@
-import serial
-
-
 def val2str(values: list):
     s = ''
     for value in values:
@@ -9,17 +6,17 @@ def val2str(values: list):
 
 
 class StageController:
-    def __init__(self, port='COM6', baud_rate=9600):
-        self.ser = serial.Serial(port, baud_rate)
+    def __init__(self, ser=None):
+        self.ser = ser
         self.end = '\r\n'
 
     def send_recv(self, order: str):
-        print(order)
+        # print(order)
         order += self.end
         self.ser.write(order.encode())
         msg = self.ser.readline().decode()
         msg.strip(self.end)
-        print(f'\t-> {msg}')
+        # print(f'\t-> {msg}')
         return msg
 
     def get_pos(self):
@@ -27,10 +24,6 @@ class StageController:
         msg = self.send_recv(order)
         pos_list = list(map(int, msg.split(',')))
         return pos_list
-        # if msg == 'OK':
-        #     return True
-        # else:
-        #     return False
 
     def move_rel(self, values: list):
         """
@@ -44,9 +37,8 @@ class StageController:
         """
 
         if len(values) != 3:
-            self.close()
             print("move value list must contain three values")
-            raise ValueError
+            return False
 
         order = 'M:' + val2str(values)
         msg = self.send_recv(order)
@@ -67,9 +59,8 @@ class StageController:
         """
 
         if len(values) != 3:
-            self.close()
             print('move value list must contain three values')
-            raise ValueError
+            return False
 
         order = 'A:' + val2str(values)
         msg = self.send_recv(order)
@@ -90,9 +81,8 @@ class StageController:
         """
 
         if len(coord) != 3:
-            self.close()
             print('stop list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
-            raise ValueError
+            return False
 
         order = 'K:' + val2str([1, 2, 3] + coord)
         msg = self.send_recv(order)
@@ -112,13 +102,11 @@ class StageController:
         """
 
         if len(args) != 3:
-            self.close()
             print('jog list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
-            raise ValueError
+            return False
         if args[0] not in [-1, 0, 1] or args[1] not in [-1, 0, 1] or args[2] not in [-1, 0, 1]:
-            self.close()
             print('jog value must be -1 ~ 1')
-            raise ValueError
+            return False
 
         order = 'J:'
         for s in args:
@@ -144,13 +132,11 @@ class StageController:
         """
 
         if len(args) != 3:
-            self.close()
             print('stop list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
-            raise ValueError
+            return False
         if args[0] not in [0, 1] or args[1] not in [0, 1] or args[2] not in [0, 1]:
-            self.close()
             print('stop value must be 0 or 1')
-            raise ValueError
+            return False
 
         order = 'L:' + val2str(args)
         msg = self.send_recv(order)
@@ -180,20 +166,17 @@ class StageController:
         """
 
         if len(args) != 4:
-            self.close()
             print('speed list must contain [axis(1~3), start(1~4000000), final(1~4000000), rate(1~1000)]')
-            raise ValueError
+            return False
 
         axis, start, final, rate = args
 
         if axis not in [1, 2, 3]:
-            self.close()
             print('axis number must be 1 ~ 3')
-            raise ValueError
+            return False
         if start < 1 or 4000000 < start or final < 1 or 4000000 < final or final < start or rate < 1 or 1000 < rate:
-            self.close()
             print('speed value out of range.\n1<=slow<=fast<=4000000, 1<=rate<=1000.')
-            raise ValueError
+            return False
 
         order = 'D:' + val2str(args)
         msg = self.send_recv(order)
@@ -216,20 +199,17 @@ class StageController:
         """
 
         if len(args) != 5:
-            self.close()
             print('speed list must contain [axis(1~3), start(1~4000000), final(1~4000000), rate(1~1000), mid(1~4000000)]')
-            raise ValueError
+            return False
 
         axis, start, final, rate, mid = args
 
         if axis not in [1, 2, 3]:
-            self.close()
             print('axis number must be 1 ~ 3')
-            raise ValueError
+            return False
         if start < 1 or 4000000 < start or final < 1 or 4000000 < final or mid < start or final < mid or rate < 1 or 1000 < rate:
-            self.close()
             print('speed value out of range.\n1<=slow<=mid<=fast<=4000000, 1<=rate<=1000.')
-            raise ValueError
+            return False
 
         order = 'B:' + val2str(args)
         msg = self.send_recv(order)
@@ -250,13 +230,11 @@ class StageController:
         """
 
         if len(args) != 3:
-            self.close()
             print('go org list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
-            raise ValueError
+            return False
         if args[0] not in [0, 1] or args[1] not in [0, 1] or args[2] not in [0, 1]:
-            self.close()
             print('go org value must be 0 or 1')
-            raise ValueError
+            return False
 
         order = 'H:' + val2str(args)
         msg = self.send_recv(order)
@@ -282,13 +260,11 @@ class StageController:
         """
 
         if len(args) != 3:
-            self.close()
             print('set logical org list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
-            raise ValueError
+            return False
         if args[0] not in [0, 1] or args[1] not in [0, 1] or args[2] not in [0, 1]:
-            self.close()
             print('set logical org value must be 0 or 1')
-            raise ValueError
+            return False
 
         order = 'R:' + val2str(args)
         msg = self.send_recv(order)
@@ -296,8 +272,3 @@ class StageController:
             return True
         else:
             return False
-
-    def close(self):
-        self.ser.close()
-        print('closed')
-        return True

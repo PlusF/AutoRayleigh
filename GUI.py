@@ -12,13 +12,14 @@ UM_PER_PULSE = 0.01
 
 
 class AndorWindow(tk.Frame):
-    def __init__(self, master=None):
+    def __init__(self, master=None, sdk=None):
         super().__init__(master)
         self.master = master
-        self.sdk = atmcd()
+        self.sdk = sdk
         self.codes = atmcd_codes
         self.errors = atmcd_errors
         self.helper = CameraCapabilities.CapabilityHelper(self.sdk)
+        self.std_temperature = -80
 
         self.create_widgets()
 
@@ -39,31 +40,52 @@ class AndorWindow(tk.Frame):
 
         self.label_msg = ttk.Label(master=self, textvariable=self.msg)
         self.button_cooler = ttk.Button(master=self, text='Cooler ON', command=self.cooler_on)
-        self.label_temperature = ttk.Label(master=self, textvariable=self.temperature)
+        self.label_std_temperature = ttk.Label(master=self, text=self.std_temperature)
+        self.label_temperature = ttk.Label(master=self, textvariable=self.temperature, background='red', foreground='white')
+        self.button_acquire = ttk.Button(master=self, text='Acquire', command=self.acquire, state=tk.DISABLED)
 
         self.label_msg.grid(row=0, column=0)
         self.button_cooler.grid(row=1, column=0)
-        self.label_temperature.grid(row=2, column=0)
+        self.label_std_temperature.grid(row=2, column=0)
+        self.label_temperature.grid(row=3, column=0)
+        self.button_acquire.grid(row=4, column=0)
 
     def draw(self):
         self.ax.plot(np.linspace(0, 10), np.sin(np.linspace(0, 10)))
         self.canvas.draw()
 
     def cooler_on(self):
-        ret = self.sdk.CoolerON()
-        while ret != atmcd_errors.Error_Codes.DRV_TEMP_STABILIZED:
-            time.sleep(5)
-            (ret, temperature) = self.sdk.GetTemperature()
-            self.temperature.set(temperature)
+        self.sdk.SetTemperature(self.std_temperature)
+        self.sdk.CoolerON()
+        self.button_cooler.config(state=tk.DISABLED)
+        self.update_temperature()
+
+
+    def update_temperature(self):
+        ret, temperature = self.sdk.GetTemperature()
+        self.temperature.set(temperature)
+        if ret != self.errors.Error_Codes.DRV_TEMP_STABILIZED:
             self.msg.set('cooling...')
-        self.msg.set("temperature stabilized")
+            self.master.after(3000, self.update_temperature)
+        else:
+            self.msg.set('temperature stabilized')
+            self.label_temperature.config(background='blue')
+            self.button_acquire.config(state=tk.ACTIVE)
+
+    def acquire(self):
+        self.sdk.SetAcquisitionMode(self.codes.Acquisition_Mode.SINGLE_SCAN)
+        self.sdk.SetReadMode(self.codes.Read_Mode.FULL_VERTICAL_BINNING)
+        self.sdk.SetTriggerMode(self.codes.Trigger_Mode.INTERNAL)
+        ret, xpixels, ypixels = self.sdk.GetDetector()
+        self.sdk.SetExposureTime(2)
+        # self.sdk.SetAccumulationCircleTime(6)
 
 
 class SKWindow(tk.Frame):
-    def __init__(self, master=None):
+    def __init__(self, master=None, ser=None):
         super().__init__(master)
         self.master = master
-        self.sc = SKStage.StageController('COM6', 9600)
+        self.sc = SKStage.StageController(ser)
 
         self.create_widgets()
 
@@ -119,14 +141,14 @@ class SKWindow(tk.Frame):
         self.button_set_goal.grid(row=row_2 + 1, column=0, columnspan=3)
         self.button_step.grid(row=row_2 + 2, column=0, columnspan=3)
 
-        self.entry_num_step = ttk.Entry(master=self.master)
-        self.entry_num_step.grid(row=5, column=0, columnspan=3)
+        self.entry_num_step = ttk.Entry(master=self)
+        self.entry_num_step.grid(row=row_2 + 3, column=0, columnspan=3)
 
     def update(self):
         coord = self.sc.get_pos()
-        self.x.set(coord[0])
-        self.y.set(coord[1])
-        self.z.set(coord[2])
+        self.x.set(coord[0] * UM_PER_PULSE)
+        self.y.set(coord[1] * UM_PER_PULSE)
+        self.z.set(coord[2] * UM_PER_PULSE)
         self.master.after(200, self.update)
 
     def set_start(self):
@@ -141,5 +163,5 @@ class SKWindow(tk.Frame):
         self.y_gl.set(self.goal[1] * UM_PER_PULSE)
         self.z_gl.set(self.goal[2] * UM_PER_PULSE)
 
-    def move_rel(self, current_step):
+    def step(self, current_step):
         num_step = self.entry_num_step.get()
