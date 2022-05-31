@@ -15,21 +15,22 @@ class MainWindow(tk.Frame):
         self.master = master
         self.aw = AndorWindow(self.master, sdk)
         self.sw = SKWindow(self.master, ser)
-        self.aw.grid(row=0, column=0)
-        self.sw.grid(row=0, column=1)
+        self.aw.grid(row=0, column=0, sticky=('N', 'E', 'S', 'W'))
+        self.sw.grid(row=0, column=1, sticky=('N', 'E', 'S', 'W'))
 
 
 def main():
-    sdk = atmcd()
-    ser = serial.Serial('COM6', 38400)
+    # sdk = atmcd()  ####
+    # ser = serial.Serial('COM6', 38400)
 
     root = tk.Tk()
     root.protocol('WM_DELETE_WINDOW', lambda: quit_me(root))
-    app = MainWindow(master=root, sdk=sdk, ser=ser)
+    # app = MainWindow(master=root, sdk=sdk, ser=ser)  ####
+    app = MainWindow(master=root)
     app.mainloop()
 
-    sdk.ShutDown()
-    ser.close()
+    # sdk.ShutDown()  ####
+    # ser.close()
 
 
 if __name__ == '__main__':
