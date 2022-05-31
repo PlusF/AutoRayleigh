@@ -15,8 +15,8 @@ class MainWindow(tk.Frame):
         self.master = master
         self.aw = AndorWindow(self.master, sdk)
         self.sw = SKWindow(self.master, ser)
-        self.aw.grid(row=0, column=0, sticky=('N', 'E', 'S', 'W'))
-        self.sw.grid(row=0, column=1, sticky=('N', 'E', 'S', 'W'))
+        self.aw.grid(row=0, column=0, sticky='NESW')
+        self.sw.grid(row=0, column=1, sticky='NESW')
 
 
 def main():
