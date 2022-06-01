@@ -1,4 +1,5 @@
 import tkinter as tk
+from tkinter import ttk
 from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors, CameraCapabilities
 from GUI import AndorWindow, SKWindow
 import serial
@@ -12,6 +13,14 @@ def quit_me(root_window):
 class MainWindow(tk.Frame):
     def __init__(self, master=None, sdk=None, ser=None):
         super().__init__()
+
+        s = ttk.Style()
+        s.theme_use('winnative')
+        s.configure('TLabel', font=('游ゴシック', 20))
+        s.configure('TEntry', font=('游ゴシック', 20))
+        s.configure('default.TButton', font=('游ゴシック', 20))
+        s.configure('red.TButton', font=('游ゴシック', 20), background='#ff0000', foreground='#ff0000')
+
         self.master = master
         self.aw = AndorWindow(self.master, sdk)
         self.sw = SKWindow(self.master, ser)
