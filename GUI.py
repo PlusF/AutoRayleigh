@@ -55,8 +55,10 @@ class AndorWindow(tk.Frame):
         self.label_temperature = ttk.Label(master=self.frame_config, textvariable=self.temperature, background='red', foreground='white')
         self.combobox_acquisition_mode = ttk.Combobox(master=self.frame_config, textvariable=self.acquisition_mode, values=list(self.acquisition_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
         self.combobox_read_mode = ttk.Combobox(master=self.frame_config, textvariable=self.read_mode, values=list(self.read_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
-        self.entry_exposure_time = ttk.Entry(master=self.frame_config, width=WIDTH, font=('游ゴシック', 20))
+        self.entry_exposure_time = ttk.Entry(master=self.frame_config, width=WIDTH)
+        self.button_take_bg = ttk.Button(master=self.frame_config, text='Take BG', command=self.take_bg, state=tk.DISABLED, width=WIDTH, style='default.TButton')
         self.button_acquire = ttk.Button(master=self.frame_config, text='Acquire', command=self.acquire, state=tk.DISABLED, width=WIDTH, style='default.TButton')
+        self.button_save = ttk.Button(master=self.frame_config, text='Save', command=self.save_as_sif, state=tk.DISABLED, width=WIDTH, style='default.TButton')
 
         self.label_msg.grid(row=0, column=0)
         self.button_cooler.grid(row=1, column=0)
@@ -64,7 +66,10 @@ class AndorWindow(tk.Frame):
         self.label_temperature.grid(row=3, column=0)
         self.combobox_acquisition_mode.grid(row=4, column=0)
         self.combobox_read_mode.grid(row=5, column=0)
-        self.button_acquire.grid(row=6, column=0)
+        self.entry_exposure_time.grid(row=6, column=0)
+        self.button_take_bg.grid(row=7, column=0)
+        self.button_acquire.grid(row=8, column=0)
+        self.button_save.grid(row=9, column=0)
 
         # グラフ関係
         self.fig = plt.figure(figsize=(4, 4))
@@ -94,7 +99,7 @@ class AndorWindow(tk.Frame):
             self.label_temperature.config(background='blue')
             self.button_acquire.config(state=tk.ACTIVE)
 
-    def acquire(self):
+    def prepare_acquisition(self):
         acquisition_mode = self.combobox_acquisition_mode.get()
         read_mode = self.combobox_read_mode.get()
         self.sdk.handle_return(self.sdk.SetAcquisitionMode(self.acquisition_mode_dict[acquisition_mode]))
@@ -106,14 +111,19 @@ class AndorWindow(tk.Frame):
         self.sdk.handle_return(self.sdk.PrepareAcquisition())
         self.sdk.handle_return(self.sdk.StartAcquisition())
         self.sdk.handle_return(self.sdk.WaitForAcquisition())
+        return xpixels
+
+    def take_bg(self):
+        xpixels = self.prepare_acquisition()
+        ret, arr = self.sdk.GetBackground(size=1)
+        ret, arr = self.sdk.SetBackground(size=1)
+
+    def acquire(self):
+        xpixels = self.prepare_acquisition()
         ret, spec, first, last = self.sdk.GetImages16(0, 0, xpixels)
         self.sdk.handle_return(ret)
         self.draw(spec)
         # self.sdk.SetAccumulationCircleTime(6)
-
-    # def take_bg(self):
-    #     ret, arr = self.sdk.GetBackground(size=1)
-    #     ret, arr = self.sdk.SetBackground(size=1)
 
     # def abort(self):
     #     self.sdk.AbortAcquisition()
@@ -121,8 +131,9 @@ class AndorWindow(tk.Frame):
     # def get_status(self):
     #     ret, status = self.sdk.GetStatus()
 
-    # def save_as_sif(self, path):
-    #     self.sdk.handle_return(self.sdk.SaveAsSif(path))
+    def save_as_sif(self):
+        path = 'test.sif'
+        self.sdk.handle_return(self.sdk.SaveAsSif(path))
 
 
 class SeqButton(ttk.Button):
