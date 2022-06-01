@@ -55,6 +55,7 @@ class AndorWindow(tk.Frame):
         self.label_temperature = ttk.Label(master=self.frame_config, textvariable=self.temperature, background='red', foreground='white')
         self.combobox_acquisition_mode = ttk.Combobox(master=self.frame_config, textvariable=self.acquisition_mode, values=list(self.acquisition_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
         self.combobox_read_mode = ttk.Combobox(master=self.frame_config, textvariable=self.read_mode, values=list(self.read_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
+        self.entry_exposure_time = ttk.Entry(master=self.frame_config, width=WIDTH, font=('游ゴシック', 20))
         self.button_acquire = ttk.Button(master=self.frame_config, text='Acquire', command=self.acquire, state=tk.DISABLED, width=WIDTH, style='default.TButton')
 
         self.label_msg.grid(row=0, column=0)
