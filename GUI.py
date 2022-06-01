@@ -109,21 +109,30 @@ class AndorWindow(tk.Frame):
         self.sdk.handle_return(ret)
         self.sdk.handle_return(self.sdk.SetExposureTime(2))
         self.sdk.handle_return(self.sdk.PrepareAcquisition())
-        self.sdk.handle_return(self.sdk.StartAcquisition())
-        self.sdk.handle_return(self.sdk.WaitForAcquisition())
         return xpixels
 
     def take_bg(self):
         xpixels = self.prepare_acquisition()
+        self.button_take_bg.config(state=tk.DISABLED)
+        self.button_acquire.config(state=tk.DISABLED)
+        self.sdk.handle_return(self.sdk.StartAcquisition())
+        self.sdk.handle_return(self.sdk.WaitForAcquisition())
         ret, arr = self.sdk.GetBackground(size=1)
         ret, arr = self.sdk.SetBackground(size=1)
+        self.button_take_bg.config(state=tk.ACTIVE)
+        self.button_acquire.config(state=tk.ACTIVE)
 
     def acquire(self):
         xpixels = self.prepare_acquisition()
+        self.button_take_bg.config(state=tk.DISABLED)
+        self.button_acquire.config(state=tk.DISABLED)
+        self.sdk.handle_return(self.sdk.StartAcquisition())
+        self.sdk.handle_return(self.sdk.WaitForAcquisition())
         ret, spec, first, last = self.sdk.GetImages16(0, 0, xpixels)
         self.sdk.handle_return(ret)
         self.draw(spec)
-        # self.sdk.SetAccumulationCircleTime(6)
+        self.button_take_bg.config(state=tk.ACTIVE)
+        self.button_acquire.config(state=tk.ACTIVE)
 
     # def abort(self):
     #     self.sdk.AbortAcquisition()
