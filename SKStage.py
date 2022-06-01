@@ -1,7 +1,7 @@
 def val2str(values: list):
     s = ''
     for value in values:
-        s += str(value) + ','
+        s += str(int(value)) + ','
     return s[:-1]
 
 
@@ -85,6 +85,7 @@ class StageController:
             return False
 
         order = 'K:' + val2str([1, 2, 3] + coord)
+        print(order)
         msg = self.send_recv(order)
         if msg == 'OK':
             return True
@@ -116,8 +117,8 @@ class StageController:
                 order += ','
             elif s == 1:
                 order += '+,'
-        order = order[:-1] + self.end
-        self.ser.write(order.encode())
+        order = order[:-1]
+        self.send_recv(order)
         return True
 
     def stop_each(self, args: list):
