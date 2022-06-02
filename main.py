@@ -1,7 +1,8 @@
 import tkinter as tk
 from tkinter import ttk
 from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors, CameraCapabilities
-from GUI import AndorWindow, SKWindow
+from AndorWindow import AndorWindow
+from SKWindow import SKWindow
 import serial
 
 
