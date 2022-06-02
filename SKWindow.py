@@ -160,21 +160,21 @@ class SKWindow(tk.Frame):
     def update(self):
         # self.sc.ser.read_all()  # JOGするとNGが帰ってきてしまってget_posに不具合が生じる．原因不明．嘘，治ったかも
         # coord = self.sc.get_pos()  ####
-        # self.x_cr.set(round(coord[0], 2))
-        # self.y_cr.set(round(coord[1], 2))
-        # self.z_cr.set(round(coord[2], 2))
+        # self.x_cr.set(round(coord[0], 2) * UM_PER_PULSE)
+        # self.y_cr.set(round(coord[1], 2) * UM_PER_PULSE)
+        # self.z_cr.set(round(coord[2], 2) * UM_PER_PULSE)
         self.check_button_state()
         self.master.after(100, self.update)
 
     def set_start(self):
-        self.x_st.set(self.x_cr.get() * UM_PER_PULSE)
-        self.y_st.set(self.y_cr.get() * UM_PER_PULSE)
-        self.z_st.set(self.z_cr.get() * UM_PER_PULSE)
+        self.x_st.set(self.x_cr.get())
+        self.y_st.set(self.y_cr.get())
+        self.z_st.set(self.z_cr.get())
 
     def set_goal(self):
-        self.x_gl.set(self.x_cr.get() * UM_PER_PULSE)
-        self.y_gl.set(self.y_cr.get() * UM_PER_PULSE)
-        self.z_gl.set(self.z_cr.get() * UM_PER_PULSE)
+        self.x_gl.set(self.x_cr.get())
+        self.y_gl.set(self.y_cr.get())
+        self.z_gl.set(self.z_cr.get())
 
     def stop(self):
         self.sc.stop_emergency()
@@ -184,6 +184,3 @@ class SKWindow(tk.Frame):
         y = (float(self.entry_x.get()) - float(self.y_cr.get())) / UM_PER_PULSE
         z = (float(self.entry_x.get()) - float(self.z_cr.get())) / UM_PER_PULSE
         self.sc.move_linear([x, y, z])
-
-    def step(self, current_step):
-        pass

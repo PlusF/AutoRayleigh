@@ -47,23 +47,31 @@ class AndorWindow(tk.Frame):
         self.label_msg = ttk.Label(master=self.frame_config, textvariable=self.msg)
         self.label_std_temperature = ttk.Label(master=self.frame_config, text='目標：' + str(self.std_temperature) + '℃')
         self.label_temperature = ttk.Label(master=self.frame_config, textvariable=self.temperature, background='red', foreground='white')
-        self.combobox_acquisition_mode = ttk.Combobox(master=self.frame_config, textvariable=self.acquisition_mode, values=list(self.acquisition_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
-        self.combobox_read_mode = ttk.Combobox(master=self.frame_config, textvariable=self.read_mode, values=list(self.read_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
+        self.combobox_acquisition_mode = ttk.Combobox(master=self.frame_config, textvariable=self.acquisition_mode, values=list(self.acquisition_mode_dict.keys()), width=WIDTH, justify=tk.CENTER, font=('游ゴシック', 20))
+        self.combobox_read_mode = ttk.Combobox(master=self.frame_config, textvariable=self.read_mode, values=list(self.read_mode_dict.keys()), width=WIDTH, justify=tk.CENTER, font=('游ゴシック', 20))
         self.entry_exposure_time = ttk.Entry(master=self.frame_config, width=WIDTH, justify=tk.CENTER)
         self.entry_exposure_time.config(font=('游ゴシック', 20))
         self.entry_exposure_time.insert(0, '10')
+        self.label_second = ttk.Label(master=self.frame_config, text='sec')
         self.button_acquire = ttk.Button(master=self.frame_config, text='Acquire', command=self.acquire, state=tk.DISABLED, width=WIDTH, style='default.TButton')
+        self.entry_filename = ttk.Entry(master=self.frame_config, width=WIDTH, justify=tk.CENTER)
+        self.entry_filename.config(font=('游ゴシック', 20))
+        self.entry_filename.insert(0, 'test01')
+        self.label_extension = ttk.Label(master=self.frame_config, text='.sif')
         self.button_save = ttk.Button(master=self.frame_config, text='Save', command=self.save_as_sif, state=tk.DISABLED, width=WIDTH, style='default.TButton')
 
         self.button_initialize.grid(row=0, rowspan=2, column=0)
-        self.label_msg.grid(row=0, column=1, columnspan=2)
+        self.label_msg.grid(row=0, column=1, columnspan=3)
         self.label_std_temperature.grid(row=1, column=1)
         self.label_temperature.grid(row=1, column=2)
-        self.combobox_acquisition_mode.grid(row=4, column=0)
-        self.combobox_read_mode.grid(row=5, column=0)
-        self.entry_exposure_time.grid(row=6, column=0)
-        self.button_acquire.grid(row=8, column=0)
-        self.button_save.grid(row=9, column=0)
+        self.combobox_acquisition_mode.grid(row=2, column=0)
+        self.combobox_read_mode.grid(row=3, column=0)
+        self.entry_exposure_time.grid(row=4, column=0)
+        self.label_second.grid(row=4, column=1)
+        self.button_acquire.grid(row=5, column=0)
+        self.entry_filename.grid(row=6, column=0)
+        self.label_extension.grid(row=6, column=1)
+        self.button_save.grid(row=6, column=2)
 
         # グラフ関係
         self.fig = plt.figure(figsize=(4, 4))
@@ -115,15 +123,15 @@ class AndorWindow(tk.Frame):
 
     def acquire(self):
         xpixels = self.prepare_acquisition()
-        self.button_take_bg.config(state=tk.DISABLED)
         self.button_acquire.config(state=tk.DISABLED)
         self.sdk.handle_return(self.sdk.StartAcquisition())
         self.sdk.handle_return(self.sdk.WaitForAcquisition())
         ret, spec, first, last = self.sdk.GetImages16(0, 0, xpixels)
         self.sdk.handle_return(ret)
         self.draw(spec)
-        self.button_take_bg.config(state=tk.ACTIVE)
         self.button_acquire.config(state=tk.ACTIVE)
+        self.button_save.config(state=tk.ACTIVE)
+        return spec
 
     # def abort(self):
     #     self.sdk.AbortAcquisition()
@@ -132,5 +140,6 @@ class AndorWindow(tk.Frame):
     #     ret, status = self.sdk.GetStatus()
 
     def save_as_sif(self):
-        path = 'test.sif'
+        directory = './'
+        path = directory + self.entry_filename.get() + '.sif'
         self.sdk.handle_return(self.sdk.SaveAsSif(path))
