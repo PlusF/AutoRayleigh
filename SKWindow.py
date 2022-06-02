@@ -181,6 +181,6 @@ class SKWindow(tk.Frame):
 
     def go(self):
         x = (float(self.entry_x.get()) - float(self.x_cr.get())) / UM_PER_PULSE
-        y = (float(self.entry_x.get()) - float(self.y_cr.get())) / UM_PER_PULSE
-        z = (float(self.entry_x.get()) - float(self.z_cr.get())) / UM_PER_PULSE
+        y = (float(self.entry_y.get()) - float(self.y_cr.get())) / UM_PER_PULSE
+        z = (float(self.entry_z.get()) - float(self.z_cr.get())) / UM_PER_PULSE
         self.sc.move_linear([x, y, z])

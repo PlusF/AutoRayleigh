@@ -81,6 +81,7 @@ class AndorWindow(tk.Frame):
         self.draw(np.sin(np.linspace(0, 10)))
 
     def draw(self, spec):
+        self.ax.cla()
         self.ax.plot(spec)
         self.canvas.draw()
 
@@ -139,7 +140,10 @@ class AndorWindow(tk.Frame):
     # def get_status(self):
     #     ret, status = self.sdk.GetStatus()
 
-    def save_as_sif(self):
-        directory = './'
-        path = directory + self.entry_filename.get() + '.sif'
+    def save_as_sif(self, filename=None):
+        if filename is None:
+            directory = 'C:/Users/optical group/Documents/Andor Solis/AutoRayleigh/'
+            path = directory + self.entry_filename.get() + '.sif'
+        else:
+            path = filename
         self.sdk.handle_return(self.sdk.SaveAsSif(path))

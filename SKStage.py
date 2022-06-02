@@ -186,6 +186,16 @@ class StageController:
         else:
             return False
 
+    def set_speed_all(self, args: list):
+        for i in range(1, 4):
+            ret = self.set_speed([i] + args)
+            if not ret:
+                return False
+        return True
+
+    def set_speed_max(self):
+        return self.set_speed_all([2000000, 4000000, 1])
+
     def set_speed_org(self, args: list):
         """
         原点復帰速度の指定．
