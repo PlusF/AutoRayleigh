@@ -20,28 +20,23 @@ class AndorWindow(tk.Frame):
         self.errors = atmcd_errors
         # self.helper = CameraCapabilities.CapabilityHelper(self.sdk)  ####
         self.std_temperature = -80  # <= 0っぽい
-        self.acquisition_mode_dict = {'Single': self.codes.Acquisition_Mode.SINGLE_SCAN,
-                                      'Accumulate': self.codes.Acquisition_Mode.ACCUMULATE}
+        self.acquisition_mode_dict = {'Single': self.codes.Acquisition_Mode.SINGLE_SCAN,  # ExposureTimeのみ
+                                      'Accumulate': self.codes.Acquisition_Mode.ACCUMULATE}  # ExposureTime, AccumulationCycleTime, NumberOfAccumulation
         self.read_mode_dict = {'Full Vertical Binning': self.codes.Read_Mode.FULL_VERTICAL_BINNING,
-                               'Image': self.codes.Read_Mode.IMAGE}
+                               'Single Track': self.codes.Read_Mode.SINGLE_TRACK,  # Single Trackモードでは範囲指定の必要あり　SetSingleTrack(128, 20)
+                               'Image': self.codes.Read_Mode.IMAGE}  # ImageモードではSetImage(1, 1, 1, 1024, 1, 256)
 
         self.create_widgets()
-
-        # if self.sdk.Initialize('') == self.errors.Error_Codes.DRV_SUCCESS:  ####
-        #     self.msg.set('successfully initialized')
-        # else:
-        #     self.msg.set('initialization failed')
 
         # ret, min_wl, max_wl = self.sdk.GetCountConvertWavelengthRange()
         # self.sdk.handle_return(ret)
         # print(min_wl, max_wl)
 
     def create_widgets(self):
-        self.msg = tk.StringVar(value='initializing...')
+        self.msg = tk.StringVar(value="初期化してください")
         self.temperature = tk.StringVar(value='現在：20℃')
         self.acquisition_mode = tk.StringVar(value='Single')
         self.read_mode = tk.StringVar(value='Full Vertical Binning')
-        self.exposure_time = tk.DoubleVar(value=30)
 
         self.frame_config = ttk.LabelFrame(master=self, text='Andor')
         self.frame_config.grid(row=0, column=0, sticky='NESW', padx=10, pady=10)
@@ -49,23 +44,27 @@ class AndorWindow(tk.Frame):
         self.frame_graph.grid(row=0, column=1, sticky='NESW', padx=10, pady=10)
 
         # Andor機器用ウィジェット
-        self.label_msg = ttk.Label(master=self.frame_config, textvariable=self.msg, width=WIDTH)
-        self.button_cooler = ttk.Button(master=self.frame_config, text='Cooler ON', command=self.cooler_on, width=WIDTH, style='default.TButton')
+        self.button_initialize = ttk.Button(master=self.frame_config, text='Initialize', width=WIDTH, style='default.TButton', padding=[0, 15])
+        self.label_msg = ttk.Label(master=self.frame_config, textvariable=self.msg)
         self.label_std_temperature = ttk.Label(master=self.frame_config, text='目標：' + str(self.std_temperature) + '℃')
         self.label_temperature = ttk.Label(master=self.frame_config, textvariable=self.temperature, background='red', foreground='white')
         self.combobox_acquisition_mode = ttk.Combobox(master=self.frame_config, textvariable=self.acquisition_mode, values=list(self.acquisition_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
         self.combobox_read_mode = ttk.Combobox(master=self.frame_config, textvariable=self.read_mode, values=list(self.read_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
-        self.entry_exposure_time = ttk.Entry(master=self.frame_config, width=WIDTH)
+        # self.button_set_acquisition_mode = ttk.Button(master=self.frame_config, text='Setting', command=self.set_acquisition, width=WIDTH, style='default.TButton')
+        self.entry_exposure_time = ttk.Entry(master=self.frame_config, width=WIDTH, justify=tk.CENTER)
+        self.entry_exposure_time.config(font=('游ゴシック', 20))
+        self.entry_exposure_time.insert(0, '10')
         self.button_take_bg = ttk.Button(master=self.frame_config, text='Take BG', command=self.take_bg, state=tk.DISABLED, width=WIDTH, style='default.TButton')
         self.button_acquire = ttk.Button(master=self.frame_config, text='Acquire', command=self.acquire, state=tk.DISABLED, width=WIDTH, style='default.TButton')
         self.button_save = ttk.Button(master=self.frame_config, text='Save', command=self.save_as_sif, state=tk.DISABLED, width=WIDTH, style='default.TButton')
 
-        self.label_msg.grid(row=0, column=0)
-        self.button_cooler.grid(row=1, column=0)
-        self.label_std_temperature.grid(row=2, column=0)
-        self.label_temperature.grid(row=3, column=0)
+        self.button_initialize.grid(row=0, rowspan=2, column=0)
+        self.label_msg.grid(row=0, column=1, columnspan=2)
+        self.label_std_temperature.grid(row=1, column=1)
+        self.label_temperature.grid(row=1, column=2)
         self.combobox_acquisition_mode.grid(row=4, column=0)
         self.combobox_read_mode.grid(row=5, column=0)
+        # self.button_set_acquisition_mode.grid(row=2, column=0)
         self.entry_exposure_time.grid(row=6, column=0)
         self.button_take_bg.grid(row=7, column=0)
         self.button_acquire.grid(row=8, column=0)
@@ -75,17 +74,25 @@ class AndorWindow(tk.Frame):
         self.fig = plt.figure(figsize=(4, 4))
         self.ax = self.fig.add_subplot(1, 1, 1)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame_graph)
-        self.canvas.get_tk_widget().grid(row=0, column=1)
+        self.canvas.get_tk_widget().grid(row=0, column=0)
         self.draw(np.sin(np.linspace(0, 10)))
 
     def draw(self, spec):
         self.ax.plot(spec)
         self.canvas.draw()
 
+    def initialize(self):
+        if self.sdk.Initialize('') == self.errors.Error_Codes.DRV_SUCCESS:
+            self.msg.set('初期化成功')
+            self.label_msg.config(background='#00ff00')
+        else:
+            self.msg.set('初期化失敗')
+            self.label_msg.config(background='#ff0000')
+        self.cooler_on()
+
     def cooler_on(self):
         self.sdk.SetTemperature(self.std_temperature)
         self.sdk.CoolerON()
-        self.button_cooler.config(state=tk.DISABLED)
         self.update_temperature()
 
     def update_temperature(self):
@@ -95,9 +102,21 @@ class AndorWindow(tk.Frame):
             self.msg.set('cooling...')
             self.master.after(1000, self.update_temperature)
         else:
-            self.msg.set('temperature stabilized')
+            self.msg.set('Temperature Stabilized')
             self.label_temperature.config(background='blue')
             self.button_acquire.config(state=tk.ACTIVE)
+
+    # def set_acquisition(self):
+    #     def return_setting():
+    #         pass
+    #
+    #     setting_window = tk.Toplevel(self)
+    #     self.combobox_acquisition_mode = ttk.Combobox(master=setting_window, textvariable=self.acquisition_mode, values=list(self.acquisition_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
+    #     self.combobox_read_mode = ttk.Combobox(master=setting_window, textvariable=self.read_mode, values=list(self.read_mode_dict.keys()), width=WIDTH, font=('游ゴシック', 20))
+    #     self.button_ok = ttk.Button(master=setting_window, text='OK', command=return_setting)
+    #     self.combobox_acquisition_mode.pack()
+    #     self.combobox_read_mode.pack()
+
 
     def prepare_acquisition(self):
         acquisition_mode = self.combobox_acquisition_mode.get()
@@ -107,7 +126,8 @@ class AndorWindow(tk.Frame):
         self.sdk.handle_return(self.sdk.SetTriggerMode(self.codes.Trigger_Mode.INTERNAL))
         ret, xpixels, ypixels = self.sdk.GetDetector()
         self.sdk.handle_return(ret)
-        self.sdk.handle_return(self.sdk.SetExposureTime(2))
+        exposure_time = int(self.entry_exposure_time.get())
+        self.sdk.handle_return(self.sdk.SetExposureTime(exposure_time))
         self.sdk.handle_return(self.sdk.PrepareAcquisition())
         return xpixels
 
@@ -118,6 +138,8 @@ class AndorWindow(tk.Frame):
         self.sdk.handle_return(self.sdk.StartAcquisition())
         self.sdk.handle_return(self.sdk.WaitForAcquisition())
         ret, arr = self.sdk.GetBackground(size=1)
+        print(arr)
+        self.draw(arr)
         ret, arr = self.sdk.SetBackground(size=1)
         self.button_take_bg.config(state=tk.ACTIVE)
         self.button_acquire.config(state=tk.ACTIVE)
@@ -218,9 +240,9 @@ class SKWindow(tk.Frame):
         self.label_x_gl = ttk.Label(master=self.frame_coord, textvariable=self.x_gl)
         self.label_y_gl = ttk.Label(master=self.frame_coord, textvariable=self.y_gl)
         self.label_z_gl = ttk.Label(master=self.frame_coord, textvariable=self.z_gl)
-        self.entry_x = ttk.Entry(master=self.frame_coord, width=WIDTH)
-        self.entry_y = ttk.Entry(master=self.frame_coord, width=WIDTH)
-        self.entry_z = ttk.Entry(master=self.frame_coord, width=WIDTH)
+        self.entry_x = ttk.Entry(master=self.frame_coord, width=WIDTH, justify=tk.CENTER)
+        self.entry_y = ttk.Entry(master=self.frame_coord, width=WIDTH, justify=tk.CENTER)
+        self.entry_z = ttk.Entry(master=self.frame_coord, width=WIDTH, justify=tk.CENTER)
         self.entry_x.config(font='游ゴシック 20')
         self.entry_y.config(font='游ゴシック 20')
         self.entry_z.config(font='游ゴシック 20')
