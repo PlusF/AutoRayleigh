@@ -159,9 +159,9 @@ class SKWindow(tk.Frame):
 
     def update(self):
         # coord = self.sc.get_pos()  ####
-        # self.x_cr.set(round(coord[0], 2) * UM_PER_PULSE)
-        # self.y_cr.set(round(coord[1], 2) * UM_PER_PULSE)
-        # self.z_cr.set(round(coord[2], 2) * UM_PER_PULSE)
+        # self.x_cr.set(round(coord[0] * UM_PER_PULSE, 2))
+        # self.y_cr.set(round(coord[1] * UM_PER_PULSE, 2))
+        # self.z_cr.set(round(coord[2] * UM_PER_PULSE, 2))
         self.check_button_state()
         self.master.after(100, self.update)
 

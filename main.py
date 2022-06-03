@@ -51,38 +51,38 @@ class MainWindow(tk.Frame):
         self.label_number.grid(row=0, column=3)
 
     def start_auto(self):
-        directory = os.getcwd()
+        self.directory = os.getcwd() + '/'
 
         self.sw.sc.set_speed_max()
 
         # 座標計算
-        start = [self.sw.x_st.get(), self.sw.y_st.get(), self.sw.z_st.get()]
-        start = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, start)))
-        goal = [self.sw.x_gl.get(), self.sw.y_gl.get(), self.sw.z_gl.get()]
-        goal = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, goal)))
+        self.start = [self.sw.x_st.get(), self.sw.y_st.get(), self.sw.z_st.get()]
+        self.start = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, self.start)))
+        self.goal = [self.sw.x_gl.get(), self.sw.y_gl.get(), self.sw.z_gl.get()]
+        self.goal = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, self.goal)))
 
         # start位置に移動
-        self.sw.sc.move_abs(start)
+        self.sw.sc.move_abs(self.start)
         # TODO: 時間計算
         time.sleep(1)
 
         self.aw.acquire()
-        self.aw.save_as_sif(filename=directory + 'background.sif')
+        self.aw.save_as_sif(filename=self.directory + 'background.sif')
 
         self.number.set(1)
-        self.auto(start, goal, directory)
+        self.auto()
 
-    def auto(self, start, goal, directory, interval=100):
+    def auto(self, interval=100):
         step = int(self.entry_step.get())
         number = self.number.get()
-        point = start + (goal - start) * number / step
+        point = self.start + (self.goal - self.start) * number / step
         self.sw.sc.move_abs(point)
         time.sleep(1)
 
         self.aw.acquire()
-        self.aw.save_as_sif(filename=directory + f'acquisition_{number}.sif')
+        self.aw.save_as_sif(filename=self.directory + f'acquisition_{number}.sif')
 
-        if number <= step:
+        if number < step:
             self.number.set(number + 1)
             self.master.after(interval, self.auto)
 
