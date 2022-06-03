@@ -43,16 +43,17 @@ class MainWindow(tk.Frame):
         self.entry_step.config(font=('游ゴシック', 20))
         self.button_start = ttk.Button(master=self.frame_auto, text='START', command=self.start_auto, width=WIDTH, style='default.TButton')
         self.number = tk.IntVar(value=0)
-        self.label_number = ttk.Label(master=self.frame_auto, textvariable=self.number, width=WIDTH)
+        self.progressbar = ttk.Progressbar(master=self.frame_auto, orient=tk.HORIZONTAL, variable=self.number, maximum=10, length=200, mode='determinate')
+        self.state = tk.StringVar(value='キャリブレーション用ファイル保存しましたか？')
+        self.label_state = ttk.Label(master=self.frame_auto, textvariable=self.state)
 
         self.label_step.grid(row=0, column=0)
         self.entry_step.grid(row=0, column=1)
         self.button_start.grid(row=0, column=2)
-        self.label_number.grid(row=0, column=3)
+        self.progressbar.grid(row=0, column=3)
+        self.label_state.grid(row=0, column=4)
 
     def start_auto(self):
-        self.directory = os.getcwd() + '/'
-
         self.sw.sc.set_speed_max()
 
         # 座標計算
@@ -61,30 +62,39 @@ class MainWindow(tk.Frame):
         self.goal = [self.sw.x_gl.get(), self.sw.y_gl.get(), self.sw.z_gl.get()]
         self.goal = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, self.goal)))
 
+        # ProgressBarの設定
+        step = int(self.entry_step.get())
+        self.progressbar.config(maximum=step + 1)
+        self.number.set(0)
+
         # start位置に移動
         self.sw.sc.move_abs(self.start)
         # TODO: 時間計算
         time.sleep(1)
 
-        self.aw.acquire()
-        self.aw.save_as_sif(filename=self.directory + 'background.sif')
+        self.state.set('Taking Background...')
+        spec = self.aw.acquire()
+        self.aw.save_as(spec=spec, filename=os.getcwd() + '/background')
 
         self.number.set(1)
-        self.auto()
+        self.master.after(100, self.auto)
 
-    def auto(self, interval=100):
+    def auto(self):
         step = int(self.entry_step.get())
         number = self.number.get()
+        self.state.set(f'Acquisition {number} of {step}')
         point = self.start + (self.goal - self.start) * number / step
         self.sw.sc.move_abs(point)
         time.sleep(1)
 
-        self.aw.acquire()
-        self.aw.save_as_sif(filename=self.directory + f'acquisition_{number}.sif')
+        spec = self.aw.acquire()
+        self.aw.save_as(spec)
 
-        if number < step:
+        if number <= step:
             self.number.set(number + 1)
-            self.master.after(interval, self.auto)
+            self.master.after(100, self.auto)
+        else:
+            self.state.set('Acquisition Finished')
 
 
 def main():

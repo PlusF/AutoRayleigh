@@ -32,6 +32,7 @@ class AndorWindow(tk.Frame):
         self.temperature = tk.StringVar(value='現在：20℃')
         self.acquisition_mode = tk.StringVar(value='Single')
         self.read_mode = tk.StringVar(value='Full Vertical Binning')
+        self.extension = tk.StringVar(value='.sif')
 
         self.frame_config = ttk.LabelFrame(master=self, text='Andor')
         self.frame_config.grid(row=0, column=0, sticky='NESW', padx=10, pady=10)
@@ -45,16 +46,17 @@ class AndorWindow(tk.Frame):
         self.label_temperature = ttk.Label(master=self.frame_config, textvariable=self.temperature, background='red', foreground='white')
         self.combobox_acquisition_mode = ttk.Combobox(master=self.frame_config, textvariable=self.acquisition_mode, values=list(self.acquisition_mode_dict.keys()), width=WIDTH, justify=tk.CENTER, font=('游ゴシック', 20))
         self.combobox_read_mode = ttk.Combobox(master=self.frame_config, textvariable=self.read_mode, values=list(self.read_mode_dict.keys()), width=WIDTH, justify=tk.CENTER, font=('游ゴシック', 20))
+        self.label_exposure_time = ttk.Label(master=self.frame_config, text='露光時間：')
         self.entry_exposure_time = ttk.Entry(master=self.frame_config, width=WIDTH, justify=tk.CENTER)
         self.entry_exposure_time.config(font=('游ゴシック', 20))
         self.entry_exposure_time.insert(0, '10')
         self.label_second = ttk.Label(master=self.frame_config, text='sec')
-        self.button_acquire = ttk.Button(master=self.frame_config, text='Acquire', command=self.acquire, state=tk.DISABLED, width=WIDTH, style='default.TButton')
+        self.button_acquire = ttk.Button(master=self.frame_config, text='Acquire', command=self.acquire, state=tk.DISABLED, width=WIDTH*3, style='default.TButton')
         self.entry_filename = ttk.Entry(master=self.frame_config, width=WIDTH, justify=tk.CENTER)
         self.entry_filename.config(font=('游ゴシック', 20))
         self.entry_filename.insert(0, 'test01')
-        self.label_extension = ttk.Label(master=self.frame_config, text='.sif')
-        self.button_save = ttk.Button(master=self.frame_config, text='Save', command=self.save_as_sif, state=tk.DISABLED, width=WIDTH, style='default.TButton')
+        self.combobox_extension = ttk.Combobox(master=self.frame_config, textvariable=self.extension, values=['.sif', '.asc'], width=WIDTH, justify=tk.CENTER, font=('游ゴシック', 20))
+        self.button_save = ttk.Button(master=self.frame_config, text='Save', command=self.save_as, state=tk.DISABLED, width=WIDTH, style='default.TButton')
 
         self.button_initialize.grid(row=0, rowspan=2, column=0)
         self.label_msg.grid(row=0, column=1, columnspan=3)
@@ -62,15 +64,16 @@ class AndorWindow(tk.Frame):
         self.label_temperature.grid(row=1, column=2)
         self.combobox_acquisition_mode.grid(row=2, column=0)
         self.combobox_read_mode.grid(row=3, column=0)
-        self.entry_exposure_time.grid(row=4, column=0)
-        self.label_second.grid(row=4, column=1)
-        self.button_acquire.grid(row=5, column=0)
+        self.label_exposure_time.grid(row=4, column=0)
+        self.entry_exposure_time.grid(row=4, column=1)
+        self.label_second.grid(row=4, column=2)
+        self.button_acquire.grid(row=5, column=0, columnspan=3)
         self.entry_filename.grid(row=6, column=0)
-        self.label_extension.grid(row=6, column=1)
+        self.combobox_extension.grid(row=6, column=1)
         self.button_save.grid(row=6, column=2)
 
         # グラフ関係
-        self.fig = plt.figure(figsize=(4, 4))
+        self.fig = plt.figure(figsize=(5, 5))
         self.ax = self.fig.add_subplot(1, 1, 1)
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame_graph)
         self.canvas.get_tk_widget().grid(row=0, column=0)
@@ -136,10 +139,24 @@ class AndorWindow(tk.Frame):
     # def get_status(self):
     #     ret, status = self.sdk.GetStatus()
 
-    def save_as_sif(self, filename=None):
+    def save_as(self, spec=None, filename=None):
         if filename is None:
             directory = 'C:/Users/optical group/Documents/Andor Solis/AutoRayleigh/'
-            path = directory + self.entry_filename.get() + '.sif'
+            path = directory + self.entry_filename.get()
         else:
             path = filename
+
+        if self.extension.get() == '.sif':
+            self.save_as_sif(path + '.sif')
+        elif self.extension.get() == '.asc':
+            if spec is None:
+                print('need argument "spec" to save as asc')
+                return False
+            self.save_as_asc(spec, path + '.asc')
+
+    def save_as_sif(self, path):
         self.sdk.handle_return(self.sdk.SaveAsSif(path))
+
+    def save_as_asc(self, spec, path):
+        with open(path, 'w') as f:
+            f.writelines(spec)
