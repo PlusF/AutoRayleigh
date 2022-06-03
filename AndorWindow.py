@@ -27,10 +27,6 @@ class AndorWindow(tk.Frame):
 
         self.create_widgets()
 
-        # ret, min_wl, max_wl = self.sdk.GetCountConvertWavelengthRange()
-        # self.sdk.handle_return(ret)
-        # print(min_wl, max_wl)
-
     def create_widgets(self):
         self.msg = tk.StringVar(value="初期化してください")
         self.temperature = tk.StringVar(value='現在：20℃')
@@ -127,7 +123,7 @@ class AndorWindow(tk.Frame):
         self.button_acquire.config(state=tk.DISABLED)
         self.sdk.handle_return(self.sdk.StartAcquisition())
         self.sdk.handle_return(self.sdk.WaitForAcquisition())
-        ret, spec, first, last = self.sdk.GetImages16(0, 0, xpixels)
+        ret, spec, first, last = self.sdk.GetImages16(1, 1, xpixels)
         self.sdk.handle_return(ret)
         self.draw(spec)
         self.button_acquire.config(state=tk.ACTIVE)

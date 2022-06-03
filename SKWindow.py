@@ -158,7 +158,6 @@ class SKWindow(tk.Frame):
             self.button_state_pre[i] = state_now
 
     def update(self):
-        # self.sc.ser.read_all()  # JOGするとNGが帰ってきてしまってget_posに不具合が生じる．原因不明．嘘，治ったかも
         # coord = self.sc.get_pos()  ####
         # self.x_cr.set(round(coord[0], 2) * UM_PER_PULSE)
         # self.y_cr.set(round(coord[1], 2) * UM_PER_PULSE)
