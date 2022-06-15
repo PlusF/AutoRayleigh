@@ -57,9 +57,9 @@ class MainWindow(tk.Frame):
         self.sw.sc.set_speed_max()
 
         # 座標計算
-        self.start = [self.sw.x_st.get(), self.sw.y_st.get(), self.sw.z_st.get()]
+        self.start = self.sw.get_start()
         self.start = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, self.start)))
-        self.goal = [self.sw.x_gl.get(), self.sw.y_gl.get(), self.sw.z_gl.get()]
+        self.goal = self.sw.get_goal()
         self.goal = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, self.goal)))
 
         # ProgressBarの設定
@@ -69,12 +69,14 @@ class MainWindow(tk.Frame):
 
         # start位置に移動
         self.sw.sc.move_abs(self.start)
-        # TODO: 時間計算
-        time.sleep(1)
+        distance = np.linalg.norm(np.array(self.sw.sc.get_pos()) - np.array(self.sw.get_start()))
+        interval = distance / 20000  # set_speed_max()で20000um/s以上になっている
+        time.sleep(max([1, interval]))  # 距離が近くても念のため1秒は待つ
+        self.interval = np.linalg.norm(np.array(self.sw.get_goal()) - np.array(self.sw.get_start())) / 20000
 
         self.state.set('Taking Background...')
-        spec = self.aw.acquire()
-        self.aw.save_as(spec=spec, filename=os.getcwd() + '/background')
+        self.aw.acquire()
+        self.aw.save_as_asc(os.getcwd() + '/data/background.asc')
 
         self.number.set(1)
         self.master.after(100, self.auto)
@@ -85,10 +87,10 @@ class MainWindow(tk.Frame):
         self.state.set(f'Acquisition {number} of {step}')
         point = self.start + (self.goal - self.start) * number / step
         self.sw.sc.move_abs(point)
-        time.sleep(1)
+        time.sleep(max([1, self.interval]))  # 距離が近くても念のため1秒は待つ
 
-        spec = self.aw.acquire()
-        self.aw.save_as(spec)
+        self.aw.acquire()
+        self.aw.save_as_asc(os.getcwd() + f'/data/acquisition{number}of{step}.asc')
 
         if number <= step:
             self.number.set(number + 1)

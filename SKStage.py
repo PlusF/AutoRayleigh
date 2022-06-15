@@ -11,12 +11,10 @@ class StageController:
         self.end = '\r\n'
 
     def send_recv(self, order: str):
-        # print(order)
         order += self.end
         self.ser.write(order.encode())
         msg = self.ser.readline().decode()
         msg.strip(self.end)
-        # print(f'\t-> {msg}')
         return msg
 
     def get_pos(self):
@@ -85,7 +83,6 @@ class StageController:
             return False
 
         order = 'K:' + val2str([1, 2, 3] + coord)
-        print(order)
         msg = self.send_recv(order)
         if msg == 'OK':
             return True

@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import ttk
-import numpy as np
 import SKStage
 
 
@@ -170,10 +169,22 @@ class SKWindow(tk.Frame):
         self.y_st.set(self.y_cr.get())
         self.z_st.set(self.z_cr.get())
 
+    def get_start(self):
+        x = self.x_st.get()
+        y = self.y_st.get()
+        z = self.z_st.get()
+        return [x, y, z]
+
     def set_goal(self):
         self.x_gl.set(self.x_cr.get())
         self.y_gl.set(self.y_cr.get())
         self.z_gl.set(self.z_cr.get())
+
+    def get_goal(self):
+        x = self.x_gl.get()
+        y = self.y_gl.get()
+        z = self.z_gl.get()
+        return [x, y, z]
 
     def stop(self):
         self.sc.stop_emergency()
