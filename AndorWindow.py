@@ -161,6 +161,6 @@ class AndorWindow(tk.Frame):
         self.sdk.handle_return(self.sdk.SaveAsSif(path))
 
     def save_as_asc(self, path):
-        spec_str = list(map(str, self.spec))
+        spec_str = list(map(lambda x: str(x) + '\n', self.spec))
         with open(path, 'w') as f:
             f.writelines(spec_str)

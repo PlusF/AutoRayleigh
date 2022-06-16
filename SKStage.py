@@ -177,7 +177,9 @@ class StageController:
             return False
 
         order = 'D:' + val2str(args)
+        print(order)
         msg = self.send_recv(order)
+        print(msg)
         if msg == 'OK':
             return True
         else:

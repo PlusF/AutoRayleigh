@@ -54,6 +54,7 @@ class MainWindow(tk.Frame):
         self.label_state.grid(row=0, column=4)
 
     def start_auto(self):
+        self.aw.prepare_acquisition()
         self.sw.sc.set_speed_max()
 
         # 座標計算
@@ -70,16 +71,11 @@ class MainWindow(tk.Frame):
         # start位置に移動
         self.sw.sc.move_abs(self.start)
         distance = np.linalg.norm(np.array(self.sw.sc.get_pos()) - np.array(self.sw.get_start()))
-        interval = distance / 20000  # set_speed_max()で20000um/s以上になっている
+        interval = distance / 1000  # set_speed_max()で20000um/s以上になっているはず・・・だがうまくいっていない
         time.sleep(max([1, interval]))  # 距離が近くても念のため1秒は待つ
-        self.interval = np.linalg.norm(np.array(self.sw.get_goal()) - np.array(self.sw.get_start())) / 20000
+        self.interval = np.linalg.norm(np.array(self.sw.get_goal()) - np.array(self.sw.get_start())) / 1000
 
-        self.state.set('Taking Background...')
-        self.aw.acquire()
-        self.aw.save_as_asc(os.getcwd() + '/data/background.asc')
-
-        self.number.set(1)
-        self.master.after(100, self.auto)
+        self.auto()
 
     def auto(self):
         step = int(self.entry_step.get())
