@@ -5,7 +5,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from scipy.signal import find_peaks
-from scipy.stats import multivariate_normal
 from sklearn.linear_model import LinearRegression
 
 
@@ -133,19 +132,24 @@ class DataProcessor:
                 self.remove_cosmic_ray(times=1)
             df = self.df_removed_cosmic_ray
 
-        fig = plt.figure(figsize=(12, 8))
-        ax = fig.add_subplot(projection='3d')
         if self.wl_data_calibrated is None:
             x = self.wl_data
         else:
             x = self.wl_data_calibrated
+
+        # extract = range(0, 1024, 100)
+        # x = x[extract]
+        # df = df.loc[:, extract]
+
+        fig = plt.figure(figsize=(12, 8))
+        ax = fig.add_subplot(projection='3d')
 
         y_surface = np.arange(0, self.num_data)
         z_surface = []
         for i, (filename, data) in enumerate(df.iterrows()):
             if 'calibration' in filename:
                 continue
-            y = [i] * 1024
+            y = [i] * df.shape[1]
             z = data.values
             if surface:
                 z_surface.append(z)
@@ -155,7 +159,8 @@ class DataProcessor:
         if surface:
             x_mesh, y_mesh = np.meshgrid(x, y_surface)
             z_surface = np.array(z_surface)
-            ax.plot_surface(x_mesh, y_mesh, z_surface, cmap='gist_earth', linewidth=1)
+            ax.plot_surface(x_mesh, y_mesh, z_surface, cmap='gist_earth', rcount=1, ccount=1000)
+            ax.set_zlim(0, ax.get_zlim()[1])
 
         plt.show()
 
@@ -165,7 +170,7 @@ def main():
     dp = DataProcessor(path=path)
     dp.quick_calibration(show=False)
     dp.remove_cosmic_ray(times=3)
-    dp.draw(cosmic_ray_removal=False, surface=True)
+    dp.draw(cosmic_ray_removal=True, surface=True)
 
 
 if __name__ == '__main__':
