@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from scipy.signal import find_peaks
-from sklearn.linear_model import LinearRegression
+from calibration import Calibrator
+from mayavi import mlab
 
 
 def modified_z_score(intensity):
@@ -32,29 +32,26 @@ def fixed_z(y, m):
 
 
 class DataProcessor:
-    def __init__(self, path, center_wl: float = 630):
-        self.path = path
+    def __init__(self):
         self.df = None
-        self.df_removed_cosmic_ray = None
+        self.df_without_cosmic_ray = None
         self.num_data = 0
-        self.center_wl = center_wl
-        self.wl_data = np.linspace(self.center_wl - 65, self.center_wl + 65, 1024)
+        self.wl_data = None
         self.peaks_found_wl = None
         self.wl_data_calibrated = None
 
-        if self.center_wl == 500:
-            self.peaks = [435.833, 546.074]
-        elif self.center_wl == 630:
-            self.peaks = [576.96, 579.066, 696.543]
-        elif self.center_wl == 760:
-            self.peaks = [696.543]
+        self.clb = None
+
+    def load_data(self, path: str, center: float):
+        self.wl_data = np.linspace(center - 65, center + 65, 1024)
+        self.clb = Calibrator()
+        self.clb.set_center(center)
+
+        if isinstance(path, str):
+            filenames = glob.glob(path + '/*.asc')
         else:
-            print('Choose from 500, 630, 760.')
-
-        self.load_data()
-
-    def load_data(self):
-        filenames = glob.glob(self.path + '/*.asc')
+            print('Failed in loading data. Check the path.')
+            return False
 
         def sort_key(fn):
             fn_sep = fn.split(os.path.sep)[-1]
@@ -68,49 +65,21 @@ class DataProcessor:
         df_list = []
         for filename in filenames:
             df = pd.read_csv(filename, header=None).T
-            df.index = [filename.split(os.path.sep)[-1]]
-            df_list.append(df)
-            if 'calibration' not in df.index[0]:
+            filename_split = filename.split(os.path.sep)[-1]
+            if 'calibration' in filename_split:
+                self.clb.load_data_from_array(df.values)
+            else:
+                df.index = [filename_split]
+                df_list.append(df)
                 self.num_data += 1
+            # if 'calibration' not in df.index[0]:
+            #     self.num_data += 1
         self.df = pd.concat(df_list, axis=0)
 
-    def quick_calibration(self, show=False):
-        data_calibration = self.df.filter(like='calibration', axis=0)
-        if len(data_calibration) > 1:
-            print('Many calibration files found. Choose one.')
-            for i, name in enumerate(data_calibration.index):
-                print(f'{i}: {name}')
-            choice = int(input('which one? >'))
-            data_calibration = data_calibration.iloc[choice]
-
-        data_calibration = np.ravel(data_calibration.values)  # 2次元配列->1次元配列
-        peaks_found, _ = find_peaks(data_calibration, distance=10, prominence=50)
-
+    def calibrate(self, show=False):
+        self.wl_data_calibrated = self.clb.calibrate(search_width=4)
         if show:
-            plt.plot(range(0, 1024), data_calibration, color='k')
-            plt.scatter(peaks_found, data_calibration[peaks_found], color='r')
-            plt.show()
-
-        if len(self.peaks) != len(peaks_found):
-            print('Failed to find peaks')
-
-        self.peaks_found_wl = self.wl_data[peaks_found]
-        self.regression()
-
-        print('Calibration succeed.')
-
-    def regression(self):
-        wl_data = np.array([self.wl_data, self.wl_data ** 2, self.wl_data ** 3])
-        wl_data = wl_data.T
-
-        peaks_found_wl = np.array(self.peaks_found_wl)
-        peaks_found_wl = np.array([peaks_found_wl, peaks_found_wl ** 2, peaks_found_wl ** 3])
-        peaks_found_wl = peaks_found_wl.T
-        peaks = np.array(self.peaks)
-
-        lr = LinearRegression()
-        lr.fit(peaks_found_wl, peaks)
-        self.wl_data_calibrated = lr.predict(wl_data)
+            self.clb.show_result()
 
     def remove_cosmic_ray(self, times: int = 0):
         df_list = []
@@ -123,23 +92,19 @@ class DataProcessor:
             df_new = pd.DataFrame(data=z).T
             df_new.index = [name]
             df_list.append(df_new)
-        self.df_removed_cosmic_ray = pd.concat(df_list, axis=0)
+        self.df_without_cosmic_ray = pd.concat(df_list, axis=0)
 
     def draw(self, cosmic_ray_removal=False, surface=True):
         df = self.df
         if cosmic_ray_removal:
-            if self.df_removed_cosmic_ray is None:
+            if self.df_without_cosmic_ray is None:
                 self.remove_cosmic_ray(times=1)
-            df = self.df_removed_cosmic_ray
+            df = self.df_without_cosmic_ray
 
         if self.wl_data_calibrated is None:
             x = self.wl_data
         else:
             x = self.wl_data_calibrated
-
-        # extract = range(0, 1024, 100)
-        # x = x[extract]
-        # df = df.loc[:, extract]
 
         fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(projection='3d')
@@ -165,12 +130,43 @@ class DataProcessor:
         plt.show()
 
 
+class WholeDataProcessor(DataProcessor):
+    def __init__(self, path_list: list, center_list: list, show: bool = True, cosmic_ray_removal: int = 3):
+        super().__init__()
+        if len(path_list) != len(center_list):
+            print('Path list and center list must have same length.')
+
+        self.x = np.array([])
+        df_list = []
+        for path, center in zip(path_list, center_list):
+            self.load_data(path, center)
+            self.calibrate(show=show)
+            self.remove_cosmic_ray(times=cosmic_ray_removal)
+            self.x = np.hstack([self.x, self.wl_data_calibrated])
+            df_list.append(self.df_without_cosmic_ray)
+        df = pd.concat(df_list, axis=1)
+        self.y = np.arange(0, df.shape[0])
+        self.z = df.values
+        zmean = self.z.mean(keepdims=True)
+        zstd = np.std(self.z, keepdims=True)
+        self.z_scaled = (self.z - zmean) / zstd * 30
+
+    def draw_3d(self):
+        s = mlab.surf(self.z_scaled)
+        mlab.show()
+
+
 def main():
-    path = r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\220616\SCANT"
-    dp = DataProcessor(path=path)
-    dp.quick_calibration(show=False)
-    dp.remove_cosmic_ray(times=3)
-    dp.draw(cosmic_ray_removal=True, surface=True)
+    path_list = [
+        r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\220619\data_500",
+        r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\220616\data_630",
+        r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\220617\data_760"
+    ]
+
+    center_list = [500, 630, 760]
+
+    dp = WholeDataProcessor(path_list=path_list, center_list=center_list, show=True, cosmic_ray_removal=3)
+    dp.draw_3d()
 
 
 if __name__ == '__main__':
