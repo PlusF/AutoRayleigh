@@ -1,10 +1,3 @@
-def val2str(values: list):
-    s = ''
-    for value in values:
-        s += str(int(value)) + ','
-    return s[:-1]
-
-
 class HSC103Controller:
     def __init__(self, ser=None):
         self.ser = ser
@@ -63,7 +56,7 @@ class HSC103Controller:
             print('move value list must contain three values')
             return False
 
-        order = 'A:' + val2str(values)
+        order = 'A:' + ','.join([str(int(val)) for val in values])
         self.send(order)
 
     def move_linear(self, coord: list):
@@ -81,7 +74,7 @@ class HSC103Controller:
             print('stop list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
             return False
 
-        order = 'K:' + val2str([1, 2, 3] + coord)
+        order = 'K:' + ','.join([str(int(val)) for val in [1, 2, 3] + coord])
         self.send(order)
 
     def jog(self, args: list):
@@ -141,7 +134,7 @@ class HSC103Controller:
             print('speed value out of range.\n1<=slow<=fast<=4000000, 1<=rate<=1000.')
             return False
 
-        order = 'D:' + val2str(args)
+        order = 'D:' + ','.join([str(int(val)) for val in args] )
         self.send(order)
 
     def set_speed_all(self, args: list):
