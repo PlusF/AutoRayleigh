@@ -10,6 +10,8 @@ class HSC103Controller:
         self.ser = ser
         self.end = '\r\n'
 
+        self.check_status()
+
     def send(self, order: str):
         if self.ser is None:
             return print(order)
@@ -22,6 +24,19 @@ class HSC103Controller:
         msg = self.ser.readline().decode()
         msg.strip(self.end)
         return msg
+
+    def check_status(self):
+        for command in ['N', 'V']:
+            msg = f'?:{command}'
+            self.send(msg)
+            print(self.recv())
+        for i, axis in enumerate(['x', 'y', 'z']):
+            print()
+            print(axis)
+            for command in ['D', 'B', 'P']:
+                msg = f'?:{command}{i + 1}'
+                self.send(msg)
+                print(self.recv())
 
     def get_position(self):
         order = 'Q:'

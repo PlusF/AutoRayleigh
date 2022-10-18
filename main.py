@@ -1,15 +1,15 @@
+import os, time, serial, threading
 import tkinter as tk
 from tkinter import ttk
-import os, time, serial, threading
 import numpy as np
-from ConfigLoader import ConfigLoader
-from HSC103Controller import HSC103Controller
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 if os.name == 'nt':
     from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
 else:
     atmcd =  atmcd_codes = atmcd_errors = None
+from ConfigLoader import ConfigLoader
+from HSC103Controller import HSC103Controller
 
 
 UM_PER_PULSE = 0.01
