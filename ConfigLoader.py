@@ -8,7 +8,8 @@ class ConfigLoader:
         self.mode = config['mode']
         self.dt = int(1000 / config['FPS'])
         self.port = f'COM{config["PORT"]}'
-        self.baudrate = config["BAUDRATE"]
+        self.baudrate = int(config["BAUDRATE"])
+        self.temperature = int(config["TEMPERATURE"])
 
 
 def main():

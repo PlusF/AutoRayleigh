@@ -5,7 +5,7 @@ def val2str(values: list):
     return s[:-1]
 
 
-class StageController:
+class HSC103Controller:
     def __init__(self, ser=None):
         self.ser = ser
         self.end = '\r\n'
@@ -23,7 +23,7 @@ class StageController:
         msg.strip(self.end)
         return msg
 
-    def get_pos(self):
+    def get_position(self):
         order = 'Q:'
         self.send(order)
         msg = self.recv()
