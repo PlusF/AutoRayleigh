@@ -1,21 +1,15 @@
 import tkinter as tk
 from tkinter import ttk
+import os, time, serial, threading
 import numpy as np
-from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors, CameraCapabilities
+from pyAndorSDK2 import atmcd
 from AndorWindow import AndorWindow
 from SKWindow import SKWindow
-import serial
-import time
-import os
+from ConfigLoader import ConfigLoader
 
 
 UM_PER_PULSE = 0.01
 WIDTH = 10
-
-
-def quit_me(root_window):
-    root_window.quit()
-    root_window.destroy()
 
 
 class MainWindow(tk.Frame):
@@ -53,7 +47,16 @@ class MainWindow(tk.Frame):
         self.progressbar.grid(row=0, column=3)
         self.label_state.grid(row=0, column=4)
 
+        self.button_quit = ttk.Button(master=self.master, text='QUIT', command=self.quit, width=WIDTH*10, style='default.TButton')
+        self.button_quit.grid(row=2, columnspan=2)
+
+        self.thread = threading.Thread(target=self.auto)
+        self.thread_working = False
+
     def start_auto(self):
+        if self.thread_working:
+            self.state.set('Still working')
+            return
         self.aw.prepare_acquisition()
         self.sw.sc.set_speed_max()
 
@@ -75,7 +78,8 @@ class MainWindow(tk.Frame):
         time.sleep(max([1, interval]))  # 距離が近くても念のため1秒は待つ
         self.interval = np.linalg.norm(np.array(self.sw.get_goal()) - np.array(self.sw.get_start())) / 1000
 
-        self.auto()
+        self.thread.start()
+        self.thread_working = True
 
     def auto(self):
         step = int(self.entry_step.get())
@@ -93,20 +97,35 @@ class MainWindow(tk.Frame):
             self.master.after(100, self.auto)
         else:
             self.state.set('Acquisition Finished')
+            self.thread_working = False
+
+    def quit(self):
+        # mainloop内でthreadを作っているので、mainloop内でjoinさせないとバグる
+        if self.thread_working:
+            print('Thread is still working. Please wait.')
+            self.thread.join()
+        else:
+            self.master.destroy()
 
 
 def main():
-    # sdk = atmcd()  ####
-    # ser = serial.Serial('COM6', 38400)
+    cl = ConfigLoader('./config.json')
+    if cl.mode == 'RELEASE':
+        sdk = atmcd()
+        ser = serial.Serial('COM6', 38400)
+    elif cl.mode == 'DEBUG':
+        sdk = ser = None
+    else:
+        raise ValueError('Error with config.json. mode must be DEBUG or RELEASE.')
 
     root = tk.Tk()
-    root.protocol('WM_DELETE_WINDOW', lambda: quit_me(root))
-    # app = MainWindow(master=root, sdk=sdk, ser=ser)  ####
-    app = MainWindow(master=root)
+    root.protocol('WM_DELETE_WINDOW', (lambda: 'pass')())  # QUITボタン以外の終了操作を許可しない
+    app = MainWindow(master=root, sdk=sdk, ser=ser)
     app.mainloop()
 
-    # sdk.ShutDown()  ####
-    # ser.close()
+    if cl.mode == 'RELEASE':
+        sdk.ShutDown()
+        ser.close()
 
 
 if __name__ == '__main__':
