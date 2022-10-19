@@ -28,6 +28,7 @@ class MinimalWindow(tk.Frame):
 
         self.spec = None
 
+        self.set_style()
         self.create_widgets()
 
         self.acquiring = False
@@ -36,13 +37,11 @@ class MinimalWindow(tk.Frame):
         self.create_thread_acq()
 
     def set_style(self):
-        s = ttk.Style()
+        style = ttk.Style()
         if os.name == 'nt':
-            s.theme_use('winnative')
-        s.configure('TLabel', font=('游ゴシック', 20))
-        s.configure('TEntry', font=('游ゴシック', 20))
-        s.configure('TButton', font=('游ゴシック', 20))
-        s.configure('red.TButton', font=('游ゴシック', 20), background='#ff0000', foreground='#ff0000')
+            style.theme_use('winnative')  # windowsにしかないテーマ
+        style.configure('.', font=FONT)
+        style.configure("red.TButton", activeforeground='red', foreground='red')
 
     def create_and_start_thread_pos(self):
         # update_positionの受信待ちで画面がフリーズしないようthreadを立てる
