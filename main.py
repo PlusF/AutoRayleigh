@@ -10,6 +10,7 @@ else:
     atmcd =  atmcd_codes = atmcd_errors = None
 from ConfigLoader import ConfigLoader
 from HSC103Controller import HSC103Controller
+from EmptySdk import EmptySdk
 
 
 UM_PER_PULSE = 0.01
@@ -34,7 +35,7 @@ class MinimalWindow(tk.Frame):
         self.acquiring = False
         self.quit_flag = False
         self.create_and_start_thread_pos()
-        self.create_thread_acq()
+        # self.create_thread_acq()
 
     def set_style(self):
         style = ttk.Style()
@@ -49,10 +50,11 @@ class MinimalWindow(tk.Frame):
         self.thread_pos.daemon = True
         self.thread_pos.start()
 
-    def create_thread_acq(self):
+    def create_and_start_thread_acq(self):
         # autoで画面がフリーズしないようthreadを立てる
         self.thread_acq = threading.Thread(target=self.auto_acquire_and_save)
         self.thread_acq.daemon = True
+        self.thread_acq.start()
 
     def start_thread_acq(self):
         self.thread_acq.start()
@@ -170,7 +172,6 @@ class MinimalWindow(tk.Frame):
         self.label_step = ttk.Label(master=self.frame_auto, text='回数：')
         self.max_step = tk.IntVar(value=10)
         self.entry_step = ttk.Entry(master=self.frame_auto, textvariable=self.max_step, width=WIDTH, justify=tk.CENTER)
-        # self.entry_step.config(font=('游ゴシック', 20))
         self.button_start = ttk.Button(master=self.frame_auto, text='START', command=self.start_auto, width=WIDTH, style='default.TButton')
         self.number = tk.IntVar(value=0)
         self.progressbar = ttk.Progressbar(master=self.frame_auto, orient=tk.HORIZONTAL, variable=self.number, maximum=10, length=200, mode='determinate')
@@ -193,15 +194,10 @@ class MinimalWindow(tk.Frame):
 
     def update_position(self):
         while not self.quit_flag:
-            if self.hsc is None:
-                self.x_cr.set(self.x_cr.get() + 1)
-                self.y_cr.set(self.y_cr.get() + 1)
-                self.z_cr.set(self.z_cr.get() + 1)
-            else:
-                x, y, z = self.hsc.get_position()
-                self.x_cr.set(round(x, 2))
-                self.y_cr.set(round(y, 2))
-                self.z_cr.set(round(z, 2))
+            x, y, z = self.hsc.get_position()
+            self.x_cr.set(round(x * UM_PER_PULSE, 2))
+            self.y_cr.set(round(y * UM_PER_PULSE, 2))
+            self.z_cr.set(round(z * UM_PER_PULSE, 2))
             time.sleep(self.cl.dt * 0.001)
 
     def set_start(self):
@@ -228,6 +224,7 @@ class MinimalWindow(tk.Frame):
         if self.sdk.Initialize('') == atmcd_errors.Error_Codes.DRV_SUCCESS:
             self.msg.set('初期化成功')
             self.label_msg.config(background='#00ff00')
+            self.button_initialize.config(state=tk.DISABLED)
         else:
             self.msg.set('初期化失敗')
             self.label_msg.config(background='#ff0000')
@@ -334,7 +331,8 @@ class MinimalWindow(tk.Frame):
         self.number.set(0)
         self.interval = np.linalg.norm(self.goal - self.start) / 1000
 
-        self.start_thread_acq()
+        # self.start_thread_acq()
+        self.create_and_start_thread_acq()
 
     def auto_acquire_and_save(self):
         self.acquiring = True
@@ -346,8 +344,9 @@ class MinimalWindow(tk.Frame):
             point = self.start + (self.goal - self.start) * number / step
             self.hsc.move_abs(point)
             time.sleep(max([1, self.interval]))  # TODO: 到着を確認してから次に進む
-
+            print('==========START ACQUISITION==============')
             self.acquire()
+            print('==========FINISH ACQUISITION==============')
 
             folder = os.path.join(os.getcwd(), 'data')
             if not os.path.exists(folder):
@@ -364,9 +363,9 @@ class MinimalWindow(tk.Frame):
         # mainloop内でthreadを作っているので、mainloop内でjoinさせないとバグる
         if self.acquiring:
             print('Thread is still working. Please wait.')
-            self.thread_pos.join()
             self.thread_acq.join()
 
+        self.thread_pos.join()
         self.master.destroy()
 
 
@@ -376,7 +375,8 @@ def main():
         sdk = atmcd()
         ser = serial.Serial(cl.port, cl.baudrate)
     elif cl.mode == 'DEBUG':
-        sdk = ser = None
+        sdk = EmptySdk()
+        ser = None
     else:
         raise ValueError('Error with config.json. mode must be DEBUG or RELEASE.')
 
