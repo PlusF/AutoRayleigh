@@ -1,4 +1,4 @@
-import os, time, serial, threading
+import os, time, serial, threading, sys
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
@@ -32,10 +32,7 @@ class MinimalWindow(tk.Frame):
         self.set_style()
         self.create_widgets()
 
-        self.acquiring = False
-        self.quit_flag = False
         self.create_and_start_thread_pos()
-        # self.create_thread_acq()
 
     def set_style(self):
         style = ttk.Style()
@@ -54,9 +51,6 @@ class MinimalWindow(tk.Frame):
         # autoで画面がフリーズしないようthreadを立てる
         self.thread_acq = threading.Thread(target=self.auto_acquire_and_save)
         self.thread_acq.daemon = True
-        self.thread_acq.start()
-
-    def start_thread_acq(self):
         self.thread_acq.start()
 
     def create_widgets(self):
@@ -146,12 +140,10 @@ class MinimalWindow(tk.Frame):
         self.label_temperature = ttk.Label(master=self.frame_andor, textvariable=self.temperature, background='red', foreground='white')
         self.label_exposure_time = ttk.Label(master=self.frame_andor, text='露光時間：')
         self.entry_exposure_time = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
-        # self.entry_exposure_time.config(font=('游ゴシック', 20))
         self.entry_exposure_time.insert(0, '10')
         self.label_second = ttk.Label(master=self.frame_andor, text='sec')
-        self.button_acquire = ttk.Button(master=self.frame_andor, text='Acquire', command=self.acquire, state=tk.DISABLED, width=WIDTH * 3)
+        self.button_acquire = ttk.Button(master=self.frame_andor, text='Acquire', command=self.prepare_and_acquire_and_draw, state=tk.DISABLED, width=WIDTH * 3)
         self.entry_filename = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
-        # self.entry_filename.config(font=('游ゴシック', 20))
         self.entry_filename.insert(0, 'test01')
         self.combobox_extension = ttk.Combobox(master=self.frame_andor, values=('.sif', '.asc'), textvariable=self.extension, width=WIDTH, justify=tk.CENTER)
         self.combobox_extension.config(font=('游ゴシック', 20))
@@ -172,14 +164,14 @@ class MinimalWindow(tk.Frame):
         self.label_step = ttk.Label(master=self.frame_auto, text='回数：')
         self.max_step = tk.IntVar(value=10)
         self.entry_step = ttk.Entry(master=self.frame_auto, textvariable=self.max_step, width=WIDTH, justify=tk.CENTER)
-        self.button_start = ttk.Button(master=self.frame_auto, text='START', command=self.start_auto, width=WIDTH, style='default.TButton')
+        self.button_start_auto = ttk.Button(master=self.frame_auto, text='START', command=self.start_auto, width=WIDTH, style='default.TButton', state=tk.DISABLED)
         self.number = tk.IntVar(value=0)
         self.progressbar = ttk.Progressbar(master=self.frame_auto, orient=tk.HORIZONTAL, variable=self.number, maximum=10, length=200, mode='determinate')
-        self.state = tk.StringVar(value='キャリブレーション用ファイルは保存しましたか？')
+        self.state = tk.StringVar(value='Not Ready')
         self.label_state = ttk.Label(master=self.frame_auto, textvariable=self.state)
         self.label_step.grid(row=0, column=0)
         self.entry_step.grid(row=0, column=1)
-        self.button_start.grid(row=0, column=2)
+        self.button_start_auto.grid(row=0, column=2)
         self.progressbar.grid(row=0, column=3)
         self.label_state.grid(row=1, column=0, columnspan=4)
 
@@ -193,7 +185,7 @@ class MinimalWindow(tk.Frame):
         self.button_quit.grid(row=3, column=0, sticky=tk.NSEW)
 
     def update_position(self):
-        while not self.quit_flag:
+        while True:
             x, y, z = self.hsc.get_position()
             self.x_cr.set(round(x * UM_PER_PULSE, 2))
             self.y_cr.set(round(y * UM_PER_PULSE, 2))
@@ -242,6 +234,8 @@ class MinimalWindow(tk.Frame):
             self.msg.set('冷却完了')
             self.label_temperature.config(background='blue')
             self.button_acquire.config(state=tk.ACTIVE)
+            self.button_start_auto.config(state=tk.ACTIVE)
+            self.state.set('Ready to Start')
 
     def prepare_acquisition(self):
         self.sdk.handle_return(self.sdk.SetAcquisitionMode(atmcd_codes.Acquisition_Mode.SINGLE_SCAN))
@@ -254,15 +248,10 @@ class MinimalWindow(tk.Frame):
         self.sdk.handle_return(self.sdk.PrepareAcquisition())
 
     def acquire(self):
-        self.prepare_acquisition()
-        self.button_acquire.config(state=tk.DISABLED)
         self.sdk.handle_return(self.sdk.StartAcquisition())
         self.sdk.handle_return(self.sdk.WaitForAcquisition())
         ret, self.spec, first, last = self.sdk.GetImages16(1, 1, self.xpixels)
         self.sdk.handle_return(ret)
-        self.draw()
-        self.button_acquire.config(state=tk.ACTIVE)
-        self.button_save.config(state=tk.ACTIVE)
 
     def draw(self):
         if self.spec is None:
@@ -271,6 +260,14 @@ class MinimalWindow(tk.Frame):
         self.ax.cla()
         self.ax.plot(self.spec)
         self.canvas.draw()
+
+    def prepare_and_acquire_and_draw(self):
+        self.button_acquire.config(state=tk.DISABLED)
+        self.prepare_acquisition()
+        self.acquire()
+        self.draw()
+        self.button_acquire.config(state=tk.ACTIVE)
+        self.button_save.config(state=tk.ACTIVE)
 
     def save_as(self, filename=None):
         if filename is None:
@@ -315,6 +312,12 @@ class MinimalWindow(tk.Frame):
     def start_auto(self):
         self.state.set('Setting up...')
 
+        self.prepare_acquisition()
+
+        folder = os.path.join(os.getcwd(), 'data')
+        if not os.path.exists(folder):
+            os.mkdir(folder)
+
         self.hsc.set_speed_max()
         # 座標計算
         self.start = np.array(self.get_start()).astype('float') / UM_PER_PULSE
@@ -327,46 +330,42 @@ class MinimalWindow(tk.Frame):
         time.sleep(max([1, interval]))  # 距離が近くても念のため1秒は待つ
 
         # ProgressBarの設定
-        self.progressbar.config(maximum=self.max_step.get() + 1)
-        self.number.set(0)
+        self.progressbar.config(maximum=self.max_step.get())
+        self.number.set(1)
         self.interval = np.linalg.norm(self.goal - self.start) / 1000
 
-        # self.start_thread_acq()
         self.create_and_start_thread_acq()
 
     def auto_acquire_and_save(self):
-        self.acquiring = True
-        number = 0
+        self.button_acquire.config(state=tk.DISABLED)
+        self.button_save.config(state=tk.DISABLED)
+        self.button_start_auto.config(state=tk.DISABLED)
+
+        number = 1
         step = int(self.entry_step.get())
-        while number <= step and not self.quit_flag:
+        while number <= step:
             self.state.set(f'Acquisition {number} of {step}')
 
             point = self.start + (self.goal - self.start) * number / step
             self.hsc.move_abs(point)
             time.sleep(max([1, self.interval]))  # TODO: 到着を確認してから次に進む
-            print('==========START ACQUISITION==============')
+
             self.acquire()
-            print('==========FINISH ACQUISITION==============')
 
             folder = os.path.join(os.getcwd(), 'data')
-            if not os.path.exists(folder):
-                os.mkdir(folder)
             self.save_as_asc(os.path.join(folder, f'{number}of{step}.asc'))
 
             number += 1
             self.number.set(number)
 
-        self.acquiring = False
+        self.state.set('Auto Acquisition Finished')
+        self.button_acquire.config(state=tk.ACTIVE)
+        self.button_save.config(state=tk.ACTIVE)
+        self.button_start_auto.config(state=tk.ACTIVE)
 
     def quit(self):
-        self.quit_flag = True
-        # mainloop内でthreadを作っているので、mainloop内でjoinさせないとバグる
-        if self.acquiring:
-            print('Thread is still working. Please wait.')
-            self.thread_acq.join()
-
-        self.thread_pos.join()
         self.master.destroy()
+        sys.exit()  # デーモン化してあるスレッドはここで死ぬ
 
 
 def main():
