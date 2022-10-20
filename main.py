@@ -1,4 +1,4 @@
-import os, time, serial, threading, sys
+import os, time, serial, threading, sys, csv
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
@@ -28,6 +28,7 @@ class MinimalWindow(tk.Frame):
         self.cl = cl
 
         self.spec = None
+        self.locations = [['x', 'y', 'z']]
 
         self.set_style()
         self.create_widgets()
@@ -93,9 +94,6 @@ class MinimalWindow(tk.Frame):
         self.entry_x = ttk.Entry(master=self.frame_hsc, textvariable=self.x_go, width=WIDTH, justify=tk.CENTER)
         self.entry_y = ttk.Entry(master=self.frame_hsc, textvariable=self.y_go, width=WIDTH, justify=tk.CENTER)
         self.entry_z = ttk.Entry(master=self.frame_hsc, textvariable=self.z_go, width=WIDTH, justify=tk.CENTER)
-        # self.entry_x.config(font='游ゴシック 20')
-        # self.entry_y.config(font='游ゴシック 20')
-        # self.entry_z.config(font='游ゴシック 20')
         self.button_set_start = ttk.Button(master=self.frame_hsc, text='Set Start', command=self.set_start, width=WIDTH)
         self.button_set_goal = ttk.Button(master=self.frame_hsc, text='Set Goal', command=self.set_goal, width=WIDTH)
         self.button_go = ttk.Button(master=self.frame_hsc, text='GO', command=self.go, width=WIDTH)
@@ -310,6 +308,9 @@ class MinimalWindow(tk.Frame):
         return [x, y, z]
 
     def start_auto(self):
+        if self.max_step.get() <= 0:
+            self.state.set('Step must be greater than 0')
+            return
         self.state.set('Setting up...')
 
         self.prepare_acquisition()
@@ -326,8 +327,8 @@ class MinimalWindow(tk.Frame):
         # start位置に移動
         self.hsc.move_abs(self.start)
         distance = np.linalg.norm(np.array(self.get_current()) - self.start)
-        interval = distance / 1000  # set_speed_max()で20000um/s以上になっているはず・・・だがうまくいっていない
-        time.sleep(max([1, interval]))  # 距離が近くても念のため1秒は待つ
+        interval = distance / 1000
+        time.sleep(max([1, interval]))  # TODO: 到着を確認してから次に進む
 
         # ProgressBarの設定
         self.progressbar.config(maximum=self.max_step.get())
@@ -342,26 +343,34 @@ class MinimalWindow(tk.Frame):
         self.button_start_auto.config(state=tk.DISABLED)
 
         number = 1
-        step = int(self.entry_step.get())
+        step = self.max_step.get()
         while number <= step:
             self.state.set(f'Acquisition {number} of {step}')
 
-            point = self.start + (self.goal - self.start) * number / step
+            point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
             self.hsc.move_abs(point)
+            self.locations.append(point)
             time.sleep(max([1, self.interval]))  # TODO: 到着を確認してから次に進む
 
             self.acquire()
 
-            folder = os.path.join(os.getcwd(), 'data')
-            self.save_as_asc(os.path.join(folder, f'{number}of{step}.asc'))
+            self.save_as_asc(os.path.join(os.getcwd(), 'data', f'{number}of{step}.asc'))
 
             number += 1
             self.number.set(number)
+
+        self.locations_to_csv()
 
         self.state.set('Auto Acquisition Finished')
         self.button_acquire.config(state=tk.ACTIVE)
         self.button_save.config(state=tk.ACTIVE)
         self.button_start_auto.config(state=tk.ACTIVE)
+
+    def locations_to_csv(self):
+        filename = os.path.join(os.getcwd(), 'data', 'location.csv')
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(self.locations)
 
     def quit(self):
         self.master.destroy()
