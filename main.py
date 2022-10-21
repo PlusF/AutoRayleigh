@@ -19,13 +19,13 @@ FONT = ('游ゴシック', 20)
 
 
 class MinimalWindow(tk.Frame):
-    def __init__(self, master, sdk, ser, cl=None):
+    def __init__(self, master, config='./config.json'):
         super().__init__(master)
         self.master = master
         self.master.title('SCANT')
-        self.sdk = sdk
-        self.hsc = HSC103Controller(ser)
-        self.cl = cl
+
+        self.cl = ConfigLoader(config)
+        self.open_ports()
 
         self.spec = None
         self.locations = [['x', 'y', 'z']]
@@ -34,6 +34,18 @@ class MinimalWindow(tk.Frame):
         self.create_widgets()
 
         self.create_and_start_thread_pos()
+
+    def open_ports(self):
+        if self.cl.mode == 'RELEASE':
+            self.sdk = atmcd()
+            self.ser = serial.Serial(self.cl.port, self.cl.baudrate)
+            self.hsc = HSC103Controller(self.ser)
+        elif self.cl.mode == 'DEBUG':
+            self.sdk = EmptySdk()
+            self.ser = None
+            self.hsc = HSC103Controller(self.ser)
+        else:
+            raise ValueError('Error with config.json. mode must be DEBUG or RELEASE.')
 
     def set_style(self):
         style = ttk.Style()
@@ -322,18 +334,17 @@ class MinimalWindow(tk.Frame):
         self.hsc.set_speed_max()
         # 座標計算
         self.start = np.array(self.get_start()).astype('float') / UM_PER_PULSE
+        current = np.array(self.get_current()).astype('float') / UM_PER_PULSE
         self.goal = np.array(self.get_goal()).astype('float') / UM_PER_PULSE
 
         # start位置に移動
         self.hsc.move_abs(self.start)
-        distance = np.linalg.norm(np.array(self.get_current()) - self.start)
-        interval = distance / 1000
-        time.sleep(max([1, interval]))  # TODO: 到着を確認してから次に進む
+        distance = np.linalg.norm(np.array(current - self.start))
+        time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
         # ProgressBarの設定
         self.progressbar.config(maximum=self.max_step.get())
         self.number.set(1)
-        self.interval = np.linalg.norm(self.goal - self.start) / 1000
 
         self.create_and_start_thread_acq()
 
@@ -350,7 +361,8 @@ class MinimalWindow(tk.Frame):
             point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
             self.hsc.move_abs(point)
             self.locations.append(point)
-            time.sleep(max([1, self.interval]))  # TODO: 到着を確認してから次に進む
+            distance = np.linalg.norm(np.array(point - self.start))
+            time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
             self.acquire()
 
@@ -358,8 +370,7 @@ class MinimalWindow(tk.Frame):
 
             number += 1
             self.number.set(number)
-
-        self.locations_to_csv()
+            self.locations_to_csv()
 
         self.state.set('Auto Acquisition Finished')
         self.button_acquire.config(state=tk.ACTIVE)
@@ -373,30 +384,19 @@ class MinimalWindow(tk.Frame):
             writer.writerows(self.locations)
 
     def quit(self):
+        if self.cl.mode == 'RELEASE':
+            self.sdk.ShutDown()
+            self.ser.close()
         self.master.destroy()
         sys.exit()  # デーモン化してあるスレッドはここで死ぬ
 
 
 def main():
-    cl = ConfigLoader('./config.json')
-    if cl.mode == 'RELEASE':
-        sdk = atmcd()
-        ser = serial.Serial(cl.port, cl.baudrate)
-    elif cl.mode == 'DEBUG':
-        sdk = EmptySdk()
-        ser = None
-    else:
-        raise ValueError('Error with config.json. mode must be DEBUG or RELEASE.')
-
     root = tk.Tk()
     root.option_add("*font", FONT)
     root.protocol('WM_DELETE_WINDOW', (lambda: 'pass')())  # QUITボタン以外の終了操作を許可しない
-    app = MinimalWindow(master=root, sdk=sdk, ser=ser, cl=cl)
+    app = MinimalWindow(master=root)
     app.mainloop()
-
-    if cl.mode == 'RELEASE':
-        sdk.ShutDown()
-        ser.close()
 
 
 if __name__ == '__main__':
