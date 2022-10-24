@@ -19,17 +19,20 @@ class HSC103Controller:
         return msg
 
     def check_status(self):
-        for command in ['N', 'V']:
+        msg = '!:'
+        self.send(msg)
+        print(msg, self.recv())
+        for command in ['N', 'V', 'P']:
             msg = f'?:{command}'
             self.send(msg)
-            print(self.recv())
+            print(msg, self.recv())
         for i, axis in enumerate(['x', 'y', 'z']):
             print()
             print(axis)
-            for command in ['D', 'B', 'P']:
+            for command in ['D', 'B']:
                 msg = f'?:{command}{i + 1}'
                 self.send(msg)
-                print(self.recv())
+                print(msg, self.recv())
 
     def get_position(self):
         order = 'Q:'
@@ -57,24 +60,6 @@ class HSC103Controller:
             return False
 
         order = 'A:' + ','.join([str(int(val)) for val in values])
-        self.send(order)
-
-    def move_linear(self, coord: list):
-        """
-
-        Args:
-            coord (list(int)): 現在位置から見た終点の位置 [pulse]．1 pulse あたり 0.01 μm 進む．
-
-        Returns:
-            bool (bool): 返答がOKならTrue．
-
-        """
-
-        if len(coord) != 3:
-            print('stop list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
-            return False
-
-        order = 'K:' + ','.join([str(int(val)) for val in [1, 2, 3] + coord])
         self.send(order)
 
     def jog(self, args: list):
