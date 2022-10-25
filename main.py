@@ -1,16 +1,11 @@
-import os, time, serial, threading, sys, csv
+import os, time, serial, threading, sys, csv, ctypes
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-# if os.name == 'nt':
-#     from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
-# else:
-#     atmcd =  atmcd_codes = atmcd_errors = None
 from ConfigLoader import ConfigLoader
 from HSC103Controller import HSC103Controller
-# from EmptySdk import EmptySdk
 
 
 UM_PER_PULSE = 0.01
@@ -25,9 +20,14 @@ class MinimalWindow(tk.Frame):
         self.master.title('SCANT')
 
         self.cl = ConfigLoader(config)
+
+        if self.cl.mode == 'RELEASE':
+            folder = self.cl.folder
+            if not os.path.exists(folder):
+                os.mkdir(folder)
+
         self.open_ports()
 
-        self.spec = None
         self.locations = [['x', 'y', 'z']]
 
         self.set_style()
@@ -37,13 +37,16 @@ class MinimalWindow(tk.Frame):
 
     def open_ports(self):
         if self.cl.mode == 'RELEASE':
-            self.sdk = atmcd()
+            os.chdir(r"C:\Program Files\IVI Foundation\VISA\Win64\Bin")
+            self.lib = ctypes.cdll.LoadLibrary("TLCCS_64.dll")
+            self.ccs_handle = ctypes.c_int(0)
+            self.lib.tlccs_init(b"USB0::0x1313::0x8089::M00331284::RAW", 1, 1, ctypes.byref(self.ccs_handle))
             self.ser = serial.Serial(self.cl.port, self.cl.baudrate)
-            self.hsc = HSC103Controller(self.ser)
+            self.stage = HSC103Controller(self.ser)
         elif self.cl.mode == 'DEBUG':
-            self.sdk = EmptySdk()
+            self.detector = None
             self.ser = None
-            self.hsc = HSC103Controller(self.ser)
+            self.stage = HSC103Controller(self.ser)
         else:
             raise ValueError('Error with config.json. mode must be DEBUG or RELEASE.')
 
@@ -68,11 +71,11 @@ class MinimalWindow(tk.Frame):
 
     def create_widgets(self):
         self.frame_hsc = ttk.LabelFrame(master=self.master, text='HSC-103')
-        self.frame_andor = ttk.LabelFrame(master=self.master, text='Andor')
+        self.frame_thorlab = ttk.LabelFrame(master=self.master, text='CCS')
         self.frame_auto = ttk.LabelFrame(master=self.master, text='Auto Scan')
         self.frame_graph = ttk.LabelFrame(master=self.master, text='Spectrum')
         self.frame_hsc.grid(row=0, column=0, sticky='NESW')
-        self.frame_andor.grid(row=1, column=0, sticky='NESW')
+        self.frame_thorlab.grid(row=1, column=0, sticky='NESW')
         self.frame_auto.grid(row=2, column=0, sticky='NESW')
         self.frame_graph.grid(row=0, column=1, rowspan=4, sticky='NESW')
         # frame_hsc
@@ -140,28 +143,21 @@ class MinimalWindow(tk.Frame):
         self.button_go.grid(row=row_2, column=col_3)
         self.button_stop.grid(row=row_2+1, column=col_0, columnspan=4, sticky=tk.NSEW)
 
-        # frame_andor
-        self.msg = tk.StringVar(value="初期化してください")
-        self.temperature = tk.StringVar(value='現在：20℃')
-        self.extension = tk.StringVar(value='.sif')
-        self.button_initialize = ttk.Button(master=self.frame_andor, text='Initialize', command=self.initialize, width=WIDTH, padding=[0, 15])
-        self.label_msg = ttk.Label(master=self.frame_andor, textvariable=self.msg)
-        self.label_std_temperature = ttk.Label(master=self.frame_andor, text='目標：' + str(self.cl.temperature) + '℃')
-        self.label_temperature = ttk.Label(master=self.frame_andor, textvariable=self.temperature, background='red', foreground='white')
-        self.label_exposure_time = ttk.Label(master=self.frame_andor, text='露光時間：')
-        self.entry_exposure_time = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
+        # frame_thorlab
+        self.msg = tk.StringVar(value='CCS Mode')
+        self.extension = tk.StringVar(value='.csv')
+        self.label_msg = ttk.Label(master=self.frame_thorlab, textvariable=self.msg)
+        self.label_exposure_time = ttk.Label(master=self.frame_thorlab, text='露光時間：')
+        self.entry_exposure_time = ttk.Entry(master=self.frame_thorlab, width=WIDTH, justify=tk.CENTER)
         self.entry_exposure_time.insert(0, '10')
-        self.label_second = ttk.Label(master=self.frame_andor, text='sec')
-        self.button_acquire = ttk.Button(master=self.frame_andor, text='Acquire', command=self.prepare_and_acquire_and_draw, state=tk.DISABLED, width=WIDTH * 3)
-        self.entry_filename = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
+        self.label_second = ttk.Label(master=self.frame_thorlab, text='sec')
+        self.button_acquire = ttk.Button(master=self.frame_thorlab, text='Acquire', command=self.prepare_and_acquire_and_draw, state=tk.DISABLED, width=WIDTH * 3)
+        self.entry_filename = ttk.Entry(master=self.frame_thorlab, width=WIDTH, justify=tk.CENTER)
         self.entry_filename.insert(0, 'test01')
-        self.combobox_extension = ttk.Combobox(master=self.frame_andor, values=('.sif', '.asc'), textvariable=self.extension, width=WIDTH, justify=tk.CENTER)
+        self.combobox_extension = ttk.Combobox(master=self.frame_thorlab, values=tuple('.csv'), textvariable=self.extension, width=WIDTH, justify=tk.CENTER)
         self.combobox_extension.config(font=('游ゴシック', 20))
-        self.button_save = ttk.Button(master=self.frame_andor, text='Save', command=self.save_as, state=tk.DISABLED, width=WIDTH)
-        self.button_initialize.grid(row=0, rowspan=2, column=0)
+        self.button_save = ttk.Button(master=self.frame_thorlab, text='Save', command=self.save_as, state=tk.DISABLED, width=WIDTH)
         self.label_msg.grid(row=0, column=1, columnspan=3)
-        self.label_std_temperature.grid(row=1, column=1)
-        self.label_temperature.grid(row=1, column=2)
         self.label_exposure_time.grid(row=4, column=0)
         self.entry_exposure_time.grid(row=4, column=1)
         self.label_second.grid(row=4, column=2)
@@ -196,7 +192,7 @@ class MinimalWindow(tk.Frame):
 
     def update_position(self):
         while True:
-            x, y, z = self.hsc.get_position()
+            x, y, z = self.stage.get_position()
             self.x_cr.set(round(x * UM_PER_PULSE, 2))
             self.y_cr.set(round(y * UM_PER_PULSE, 2))
             self.z_cr.set(round(z * UM_PER_PULSE, 2))
@@ -216,59 +212,37 @@ class MinimalWindow(tk.Frame):
         x = (float(self.entry_x.get()) - float(self.x_cr.get())) / UM_PER_PULSE
         y = (float(self.entry_y.get()) - float(self.y_cr.get())) / UM_PER_PULSE
         z = (float(self.entry_z.get()) - float(self.z_cr.get())) / UM_PER_PULSE
-        self.hsc.move_linear([x, y, z])
+        self.stage.move_linear([x, y, z])
 
     def stop(self):
-        self.hsc.stop_emergency()
-
-    def initialize(self):
-        # 初期化
-        if self.sdk.Initialize('') == atmcd_errors.Error_Codes.DRV_SUCCESS:
-            self.msg.set('初期化成功')
-            self.label_msg.config(background='#00ff00')
-            self.button_initialize.config(state=tk.DISABLED)
-        else:
-            self.msg.set('初期化失敗')
-            self.label_msg.config(background='#ff0000')
-        # coolerをonに
-        self.sdk.SetTemperature(self.cl.temperature)
-        self.sdk.CoolerON()
-        self.update_temperature()
-
-    def update_temperature(self):
-        ret, temperature = self.sdk.GetTemperature()
-        self.temperature.set('現在：' + str(temperature) + '℃')
-        if ret != atmcd_errors.Error_Codes.DRV_TEMP_STABILIZED:
-            self.master.after(1000, self.update_temperature)
-        else:
-            self.msg.set('冷却完了')
-            self.label_temperature.config(background='blue')
-            self.button_acquire.config(state=tk.ACTIVE)
-            self.button_start_auto.config(state=tk.ACTIVE)
-            self.state.set('Ready to Start')
+        self.stage.stop_emergency()
 
     def prepare_acquisition(self):
-        self.sdk.handle_return(self.sdk.SetAcquisitionMode(atmcd_codes.Acquisition_Mode.SINGLE_SCAN))
-        self.sdk.handle_return(self.sdk.SetReadMode(atmcd_codes.Read_Mode.FULL_VERTICAL_BINNING))
-        self.sdk.handle_return(self.sdk.SetTriggerMode(atmcd_codes.Trigger_Mode.INTERNAL))
-        ret, self.xpixels, ypixels = self.sdk.GetDetector()
-        self.sdk.handle_return(ret)
-        exposure_time = float(self.entry_exposure_time.get())
-        self.sdk.handle_return(self.sdk.SetExposureTime(exposure_time))
-        self.sdk.handle_return(self.sdk.PrepareAcquisition())
+        # set integration time in  seconds, ranging from 1e-5 to 6e1
+        exposure = float(self.entry_exposure_time.get())
+        if exposure < 1e-5:
+            print('exposure must be greater than 1e-5')
+            exposure = 1e-5
+        elif exposure > 60:
+            print('exposure must be less than 60')
+            exposure = 1e-5
+        self.entry_exposure_time.insert(0, str(exposure))
+        integration_time = ctypes.c_double(exposure)
+        self.lib.tlccs_setIntegrationTime(self.ccs_handle, integration_time)
 
     def acquire(self):
-        self.sdk.handle_return(self.sdk.StartAcquisition())
-        self.sdk.handle_return(self.sdk.WaitForAcquisition())
-        ret, self.spec, first, last = self.sdk.GetImages16(1, 1, self.xpixels)
-        self.sdk.handle_return(ret)
+        # start scan
+        self.lib.tlccs_startScan(self.ccs_handle)
+        time.sleep(float(self.entry_exposure_time.get()) * 1.6)  # exposureの1.6倍以上の時間を置かないとうまくシグナルが得られない
+        self.wavelengths = (ctypes.c_double * 3648)()
+        self.lib.tlccs_getWavelengthData(self.ccs_handle, 0, ctypes.byref(self.wavelengths), ctypes.c_void_p(None), ctypes.c_void_p(None))
+        # retrieve data
+        self.data_array = (ctypes.c_double * 3648)()
+        self.lib.tlccs_getScanData(self.ccs_handle, ctypes.byref(self.data_array))
 
     def draw(self):
-        if self.spec is None:
-            print('No spectrum to draw')
-            return False
         self.ax.cla()
-        self.ax.plot(self.spec)
+        self.ax.plot(self.wavelengths, self.data_array)
         self.canvas.draw()
 
     def prepare_and_acquire_and_draw(self):
@@ -281,23 +255,21 @@ class MinimalWindow(tk.Frame):
 
     def save_as(self, filename=None):
         if filename is None:
-            directory = os.getcwd()
+            directory = self.cl.folder
             path = os.path.join(directory, self.entry_filename.get())
         else:
             path = filename
 
-        if self.extension.get() == '.sif':
-            self.save_as_sif(path + '.sif')
-        elif self.extension.get() == '.asc':
-            self.save_as_asc(path + '.asc')
+        if self.extension.get() == '.csv':
+            self.save_as_csv(path + '.csv')
         else:
             self.state.set('Invalid extension')
 
-    def save_as_sif(self, path):
-        self.sdk.handle_return(self.sdk.SaveAsSif(path))
-
-    def save_as_asc(self, path):
-        spec_str = list(map(lambda x: str(x) + '\n', self.spec))
+    def save_as_csv(self, path):
+        x = np.array(self.wavelengths).reshape(-1, 1)
+        y = np.array(self.data_array).reshape(-1, 1)
+        spec = np.hstack([x, y])
+        spec_str = list(map(lambda val: str(val[0]) + ',' + str(val[1]) + '\n', spec))
         with open(path, 'w') as f:
             f.writelines(spec_str)
 
@@ -327,18 +299,14 @@ class MinimalWindow(tk.Frame):
 
         self.prepare_acquisition()
 
-        folder = os.path.join(os.getcwd(), 'data')
-        if not os.path.exists(folder):
-            os.mkdir(folder)
-
-        self.hsc.set_speed_max()
+        self.stage.set_speed_max()
         # 座標計算
         self.start = np.array(self.get_start()).astype('float') / UM_PER_PULSE
         current = np.array(self.get_current()).astype('float') / UM_PER_PULSE
         self.goal = np.array(self.get_goal()).astype('float') / UM_PER_PULSE
 
         # start位置に移動
-        self.hsc.move_abs(self.start)
+        self.stage.move_abs(self.start)
         distance = np.linalg.norm(np.array(current - self.start))
         time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
@@ -359,14 +327,14 @@ class MinimalWindow(tk.Frame):
             self.state.set(f'Acquisition {number} of {step}')
 
             point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
-            self.hsc.move_abs(point)
+            self.stage.move_abs(point)
             self.locations.append(point)
             distance = np.linalg.norm(np.array(point - self.start))
             time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
             self.acquire()
 
-            self.save_as_asc(os.path.join(os.getcwd(), 'data', f'{number}of{step}.asc'))
+            self.save_as_csv(os.path.join(self.cl.folder, f'{number}of{step}.csv'))
 
             number += 1
             self.number.set(number)
@@ -378,14 +346,18 @@ class MinimalWindow(tk.Frame):
         self.button_start_auto.config(state=tk.ACTIVE)
 
     def locations_to_csv(self):
-        filename = os.path.join(os.getcwd(), 'data', 'location.csv')
-        with open(filename, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerows(self.locations)
+        if self.cl.mode == 'RELEASE':
+            filename = os.path.join(self.cl.folder, 'location.csv')
+            with open(filename, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(self.locations)
+        else:
+            print('locations saved')
 
     def quit(self):
         if self.cl.mode == 'RELEASE':
-            self.sdk.ShutDown()
+            self.lib.tlccs_close(self.ccs_handle)
+            self.detector.ShutDown()
             self.ser.close()
         self.master.destroy()
         sys.exit()  # デーモン化してあるスレッドはここで死ぬ

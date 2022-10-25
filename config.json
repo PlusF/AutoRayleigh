@@ -3,5 +3,6 @@
   "FPS": 5,
   "PORT": 6,
   "BAUDRATE": 38400,
-  "TEMPERATURE": -80
+  "TEMPERATURE": -80,
+  "FOLDER": "\\C:\\Users\\optical group\\Desktop\\data"
 }
