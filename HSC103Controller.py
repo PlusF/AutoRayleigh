@@ -62,6 +62,24 @@ class HSC103Controller:
         order = 'A:' + ','.join([str(int(val)) for val in values])
         self.send(order)
 
+    def move_linear(self, coord: list):
+        """
+
+        Args:
+            coord (list(int)): 現在位置から見た終点の位置 [pulse]．1 pulse あたり 0.01 μm 進む．
+
+        Returns:
+            bool (bool): 返答がOKならTrue．
+
+        """
+
+        if len(coord) != 3:
+            print('stop list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
+            return False
+
+        order = 'K:' + val2str([1, 2, 3] + coord)
+        msg = self.send(order)
+
     def jog(self, args: list):
         """
 
