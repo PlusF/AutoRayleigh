@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from ConfigLoader import ConfigLoader
 from HSC103Controller import HSC103Controller
+from EmptyLib import EmptyLib
 
 
 UM_PER_PULSE = 0.01
@@ -44,7 +45,8 @@ class MinimalWindow(tk.Frame):
             self.ser = serial.Serial(self.cl.port, self.cl.baudrate)
             self.stage = HSC103Controller(self.ser)
         elif self.cl.mode == 'DEBUG':
-            self.detector = None
+            self.lib = EmptyLib()
+            self.ccs_handle = None
             self.ser = None
             self.stage = HSC103Controller(self.ser)
         else:
@@ -226,6 +228,7 @@ class MinimalWindow(tk.Frame):
         elif exposure > 60:
             print('exposure must be less than 60')
             exposure = 1e-5
+        self.entry_exposure_time.delete(0, tk.END)
         self.entry_exposure_time.insert(0, str(exposure))
         integration_time = ctypes.c_double(exposure)
         self.lib.tlccs_setIntegrationTime(self.ccs_handle, integration_time)
@@ -357,7 +360,6 @@ class MinimalWindow(tk.Frame):
     def quit(self):
         if self.cl.mode == 'RELEASE':
             self.lib.tlccs_close(self.ccs_handle)
-            self.detector.ShutDown()
             self.ser.close()
         self.master.destroy()
         sys.exit()  # デーモン化してあるスレッドはここで死ぬ
