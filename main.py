@@ -4,13 +4,13 @@ from tkinter import ttk
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-if os.name == 'nt':
-    from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
-else:
-    atmcd =  atmcd_codes = atmcd_errors = None
+# if os.name == 'nt':
+#     from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
+# else:
+#     atmcd =  atmcd_codes = atmcd_errors = None
 from ConfigLoader import ConfigLoader
 from HSC103Controller import HSC103Controller
-from EmptySdk import EmptySdk
+# from EmptySdk import EmptySdk
 
 
 UM_PER_PULSE = 0.01
