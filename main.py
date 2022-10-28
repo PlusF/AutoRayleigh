@@ -1,112 +1,402 @@
+import os, time, serial, threading, sys, csv
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
-from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors, CameraCapabilities
-from AndorWindow import AndorWindow
-from SKWindow import SKWindow
-import serial
-import time
-import os
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+if os.name == 'nt':
+    from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
+else:
+    atmcd =  atmcd_codes = atmcd_errors = None
+from ConfigLoader import ConfigLoader
+from HSC103Controller import HSC103Controller
+from EmptySdk import EmptySdk
 
 
 UM_PER_PULSE = 0.01
 WIDTH = 10
+FONT = ('游ゴシック', 20)
 
 
-def quit_me(root_window):
-    root_window.quit()
-    root_window.destroy()
-
-
-class MainWindow(tk.Frame):
-    def __init__(self, master=None, sdk=None, ser=None):
-        super().__init__()
-
-        s = ttk.Style()
-        s.theme_use('winnative')
-        s.configure('TLabel', font=('游ゴシック', 20))
-        s.configure('TEntry', font=('游ゴシック', 20))
-        s.configure('default.TButton', font=('游ゴシック', 20))
-        s.configure('red.TButton', font=('游ゴシック', 20), background='#ff0000', foreground='#ff0000')
-
+class MinimalWindow(tk.Frame):
+    def __init__(self, master, config='./config.json'):
+        super().__init__(master)
         self.master = master
-        self.aw = AndorWindow(self.master, sdk)
-        self.sw = SKWindow(self.master, ser)
-        self.frame_auto = ttk.LabelFrame(master=self.master, text='Auto')
-        self.aw.grid(row=0, column=0, sticky='NESW')
-        self.sw.grid(row=0, column=1, sticky='NESW')
-        self.frame_auto.grid(row=1, column=0, columnspan=2, sticky='NESW')
+        self.master.title('SCANT')
 
+        self.cl = ConfigLoader(config)
+        self.open_ports()
+
+        self.spec = None
+        self.locations = [['x', 'y', 'z']]
+
+        self.set_style()
+        self.create_widgets()
+
+        self.create_and_start_thread_pos()
+
+    def open_ports(self):
+        if self.cl.mode == 'RELEASE':
+            self.sdk = atmcd()
+            self.ser = serial.Serial(self.cl.port, self.cl.baudrate)
+            self.hsc = HSC103Controller(self.ser)
+        elif self.cl.mode == 'DEBUG':
+            self.sdk = EmptySdk()
+            self.ser = None
+            self.hsc = HSC103Controller(self.ser)
+        else:
+            raise ValueError('Error with config.json. mode must be DEBUG or RELEASE.')
+
+    def set_style(self):
+        style = ttk.Style()
+        if os.name == 'nt':
+            style.theme_use('winnative')  # windowsにしかないテーマ
+        style.configure('.', font=FONT)
+        style.configure("red.TButton", activeforeground='red', foreground='red')
+
+    def create_and_start_thread_pos(self):
+        # update_positionの受信待ちで画面がフリーズしないようthreadを立てる
+        self.thread_pos = threading.Thread(target=self.update_position)
+        self.thread_pos.daemon = True
+        self.thread_pos.start()
+
+    def create_and_start_thread_acq(self):
+        # autoで画面がフリーズしないようthreadを立てる
+        self.thread_acq = threading.Thread(target=self.auto_acquire_and_save)
+        self.thread_acq.daemon = True
+        self.thread_acq.start()
+
+    def create_widgets(self):
+        self.frame_hsc = ttk.LabelFrame(master=self.master, text='HSC-103')
+        self.frame_andor = ttk.LabelFrame(master=self.master, text='Andor')
+        self.frame_auto = ttk.LabelFrame(master=self.master, text='Auto Scan')
+        self.frame_graph = ttk.LabelFrame(master=self.master, text='Spectrum')
+        self.frame_hsc.grid(row=0, column=0, sticky='NESW')
+        self.frame_andor.grid(row=1, column=0, sticky='NESW')
+        self.frame_auto.grid(row=2, column=0, sticky='NESW')
+        self.frame_graph.grid(row=0, column=1, rowspan=4, sticky='NESW')
+        # frame_hsc
+        self.x_st = tk.DoubleVar(value=0)
+        self.y_st = tk.DoubleVar(value=0)
+        self.z_st = tk.DoubleVar(value=0)
+        self.x_cr = tk.DoubleVar(value=0)
+        self.y_cr = tk.DoubleVar(value=0)
+        self.z_cr = tk.DoubleVar(value=0)
+        self.x_gl = tk.DoubleVar(value=0)
+        self.y_gl = tk.DoubleVar(value=0)
+        self.z_gl = tk.DoubleVar(value=0)
+        self.x_go = tk.DoubleVar(value=0)
+        self.y_go = tk.DoubleVar(value=0)
+        self.z_go = tk.DoubleVar(value=0)
+        self.label_x = ttk.Label(master=self.frame_hsc, text='x [\u03bcm]')
+        self.label_y = ttk.Label(master=self.frame_hsc, text='y [\u03bcm]')
+        self.label_z = ttk.Label(master=self.frame_hsc, text='z [\u03bcm]')
+        self.label_st = ttk.Label(master=self.frame_hsc, text='start')
+        self.label_cr = ttk.Label(master=self.frame_hsc, text='current')
+        self.label_gl = ttk.Label(master=self.frame_hsc, text='goal')
+        self.label_x_st = ttk.Label(master=self.frame_hsc, textvariable=self.x_st)
+        self.label_y_st = ttk.Label(master=self.frame_hsc, textvariable=self.y_st)
+        self.label_z_st = ttk.Label(master=self.frame_hsc, textvariable=self.z_st)
+        self.label_x = ttk.Label(master=self.frame_hsc, textvariable=self.x_cr)
+        self.label_y = ttk.Label(master=self.frame_hsc, textvariable=self.y_cr)
+        self.label_z = ttk.Label(master=self.frame_hsc, textvariable=self.z_cr)
+        self.label_x_gl = ttk.Label(master=self.frame_hsc, textvariable=self.x_gl)
+        self.label_y_gl = ttk.Label(master=self.frame_hsc, textvariable=self.y_gl)
+        self.label_z_gl = ttk.Label(master=self.frame_hsc, textvariable=self.z_gl)
+        self.entry_x = ttk.Entry(master=self.frame_hsc, textvariable=self.x_go, width=WIDTH, justify=tk.CENTER)
+        self.entry_y = ttk.Entry(master=self.frame_hsc, textvariable=self.y_go, width=WIDTH, justify=tk.CENTER)
+        self.entry_z = ttk.Entry(master=self.frame_hsc, textvariable=self.z_go, width=WIDTH, justify=tk.CENTER)
+        self.button_set_start = ttk.Button(master=self.frame_hsc, text='Set Start', command=self.set_start, width=WIDTH)
+        self.button_set_goal = ttk.Button(master=self.frame_hsc, text='Set Goal', command=self.set_goal, width=WIDTH)
+        self.button_go = ttk.Button(master=self.frame_hsc, text='GO', command=self.go, width=WIDTH)
+        self.button_stop = ttk.Button(master=self.frame_hsc, text='STOP', command=self.stop, width=WIDTH, style='red.TButton')
+        row_0 = 0
+        row_1 = 1
+        row_2 = 4
+        col_0 = 1
+        col_1 = 2
+        col_2 = 3
+        col_3 = 4
+        self.label_st.grid(row=row_0, column=col_0)
+        self.label_cr.grid(row=row_0, column=col_1)
+        self.label_gl.grid(row=row_0, column=col_2)
+        self.label_x.grid(row=row_1, column=0)
+        self.label_y.grid(row=row_1 + 1, column=0)
+        self.label_z.grid(row=row_1 + 2, column=0)
+        self.label_x_st.grid(row=row_1, column=col_0)
+        self.label_y_st.grid(row=row_1 + 1, column=col_0)
+        self.label_z_st.grid(row=row_1 + 2, column=col_0)
+        self.label_x.grid(row=row_1, column=col_1)
+        self.label_y.grid(row=row_1 + 1, column=col_1)
+        self.label_z.grid(row=row_1 + 2, column=col_1)
+        self.label_x_gl.grid(row=row_1, column=col_2)
+        self.label_y_gl.grid(row=row_1 + 1, column=col_2)
+        self.label_z_gl.grid(row=row_1 + 2, column=col_2)
+        self.entry_x.grid(row=row_1, column=col_3)
+        self.entry_y.grid(row=row_1 + 1, column=col_3)
+        self.entry_z.grid(row=row_1 + 2, column=col_3)
+        self.button_set_start.grid(row=row_2, column=col_0)
+        self.button_set_goal.grid(row=row_2, column=col_2)
+        self.button_go.grid(row=row_2, column=col_3)
+        self.button_stop.grid(row=row_2+1, column=col_0, columnspan=4, sticky=tk.NSEW)
+
+        # frame_andor
+        self.msg = tk.StringVar(value="初期化してください")
+        self.temperature = tk.StringVar(value='現在：20℃')
+        self.extension = tk.StringVar(value='.sif')
+        self.button_initialize = ttk.Button(master=self.frame_andor, text='Initialize', command=self.initialize, width=WIDTH, padding=[0, 15])
+        self.label_msg = ttk.Label(master=self.frame_andor, textvariable=self.msg)
+        self.label_std_temperature = ttk.Label(master=self.frame_andor, text='目標：' + str(self.cl.temperature) + '℃')
+        self.label_temperature = ttk.Label(master=self.frame_andor, textvariable=self.temperature, background='red', foreground='white')
+        self.label_exposure_time = ttk.Label(master=self.frame_andor, text='露光時間：')
+        self.entry_exposure_time = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
+        self.entry_exposure_time.insert(0, '10')
+        self.label_second = ttk.Label(master=self.frame_andor, text='sec')
+        self.button_acquire = ttk.Button(master=self.frame_andor, text='Acquire', command=self.prepare_and_acquire_and_draw, state=tk.DISABLED, width=WIDTH * 3)
+        self.entry_filename = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
+        self.entry_filename.insert(0, 'test01')
+        self.combobox_extension = ttk.Combobox(master=self.frame_andor, values=('.sif', '.asc'), textvariable=self.extension, width=WIDTH, justify=tk.CENTER)
+        self.combobox_extension.config(font=('游ゴシック', 20))
+        self.button_save = ttk.Button(master=self.frame_andor, text='Save', command=self.save_as, state=tk.DISABLED, width=WIDTH)
+        self.button_initialize.grid(row=0, rowspan=2, column=0)
+        self.label_msg.grid(row=0, column=1, columnspan=3)
+        self.label_std_temperature.grid(row=1, column=1)
+        self.label_temperature.grid(row=1, column=2)
+        self.label_exposure_time.grid(row=4, column=0)
+        self.entry_exposure_time.grid(row=4, column=1)
+        self.label_second.grid(row=4, column=2)
+        self.button_acquire.grid(row=5, column=0, columnspan=3)
+        self.entry_filename.grid(row=6, column=0)
+        self.combobox_extension.grid(row=6, column=1)
+        self.button_save.grid(row=6, column=2)
+
+        # frame_auto
         self.label_step = ttk.Label(master=self.frame_auto, text='回数：')
-        self.entry_step = ttk.Entry(master=self.frame_auto, width=WIDTH, justify=tk.CENTER)
-        self.entry_step.insert(0, '10')
-        self.entry_step.config(font=('游ゴシック', 20))
-        self.button_start = ttk.Button(master=self.frame_auto, text='START', command=self.start_auto, width=WIDTH, style='default.TButton')
+        self.max_step = tk.IntVar(value=10)
+        self.entry_step = ttk.Entry(master=self.frame_auto, textvariable=self.max_step, width=WIDTH, justify=tk.CENTER)
+        self.button_start_auto = ttk.Button(master=self.frame_auto, text='START', command=self.start_auto, width=WIDTH, style='default.TButton', state=tk.DISABLED)
         self.number = tk.IntVar(value=0)
         self.progressbar = ttk.Progressbar(master=self.frame_auto, orient=tk.HORIZONTAL, variable=self.number, maximum=10, length=200, mode='determinate')
-        self.state = tk.StringVar(value='キャリブレーション用ファイル保存しましたか？')
+        self.state = tk.StringVar(value='Not Ready')
         self.label_state = ttk.Label(master=self.frame_auto, textvariable=self.state)
-
         self.label_step.grid(row=0, column=0)
         self.entry_step.grid(row=0, column=1)
-        self.button_start.grid(row=0, column=2)
+        self.button_start_auto.grid(row=0, column=2)
         self.progressbar.grid(row=0, column=3)
-        self.label_state.grid(row=0, column=4)
+        self.label_state.grid(row=1, column=0, columnspan=4)
+
+        # frame_graph
+        self.fig = plt.figure(figsize=(5, 5))
+        self.ax = self.fig.add_subplot(1, 1, 1)
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.frame_graph)
+        self.canvas.get_tk_widget().grid(row=0, column=0)
+        # quit
+        self.button_quit = ttk.Button(master=self.master, text='QUIT', command=self.quit, style='red.TButton')
+        self.button_quit.grid(row=3, column=0, sticky=tk.NSEW)
+
+    def update_position(self):
+        while True:
+            x, y, z = self.hsc.get_position()
+            self.x_cr.set(round(x * UM_PER_PULSE, 2))
+            self.y_cr.set(round(y * UM_PER_PULSE, 2))
+            self.z_cr.set(round(z * UM_PER_PULSE, 2))
+            time.sleep(self.cl.dt * 0.001)
+
+    def set_start(self):
+        self.x_st.set(self.x_cr.get())
+        self.y_st.set(self.y_cr.get())
+        self.z_st.set(self.z_cr.get())
+
+    def set_goal(self):
+        self.x_gl.set(self.x_cr.get())
+        self.y_gl.set(self.y_cr.get())
+        self.z_gl.set(self.z_cr.get())
+
+    def go(self):
+        x = (float(self.entry_x.get()) - float(self.x_cr.get())) / UM_PER_PULSE
+        y = (float(self.entry_y.get()) - float(self.y_cr.get())) / UM_PER_PULSE
+        z = (float(self.entry_z.get()) - float(self.z_cr.get())) / UM_PER_PULSE
+        self.hsc.move_linear([x, y, z])
+
+    def stop(self):
+        self.hsc.stop_emergency()
+
+    def initialize(self):
+        # 初期化
+        if self.sdk.Initialize('') == atmcd_errors.Error_Codes.DRV_SUCCESS:
+            self.msg.set('初期化成功')
+            self.label_msg.config(background='#00ff00')
+            self.button_initialize.config(state=tk.DISABLED)
+        else:
+            self.msg.set('初期化失敗')
+            self.label_msg.config(background='#ff0000')
+        # coolerをonに
+        self.sdk.SetTemperature(self.cl.temperature)
+        self.sdk.CoolerON()
+        self.update_temperature()
+
+    def update_temperature(self):
+        ret, temperature = self.sdk.GetTemperature()
+        self.temperature.set('現在：' + str(temperature) + '℃')
+        if ret != atmcd_errors.Error_Codes.DRV_TEMP_STABILIZED:
+            self.master.after(1000, self.update_temperature)
+        else:
+            self.msg.set('冷却完了')
+            self.label_temperature.config(background='blue')
+            self.button_acquire.config(state=tk.ACTIVE)
+            self.button_start_auto.config(state=tk.ACTIVE)
+            self.state.set('Ready to Start')
+
+    def prepare_acquisition(self):
+        self.sdk.handle_return(self.sdk.SetAcquisitionMode(atmcd_codes.Acquisition_Mode.SINGLE_SCAN))
+        self.sdk.handle_return(self.sdk.SetReadMode(atmcd_codes.Read_Mode.FULL_VERTICAL_BINNING))
+        self.sdk.handle_return(self.sdk.SetTriggerMode(atmcd_codes.Trigger_Mode.INTERNAL))
+        ret, self.xpixels, ypixels = self.sdk.GetDetector()
+        self.sdk.handle_return(ret)
+        exposure_time = float(self.entry_exposure_time.get())
+        self.sdk.handle_return(self.sdk.SetExposureTime(exposure_time))
+        self.sdk.handle_return(self.sdk.PrepareAcquisition())
+
+    def acquire(self):
+        self.sdk.handle_return(self.sdk.StartAcquisition())
+        self.sdk.handle_return(self.sdk.WaitForAcquisition())
+        ret, self.spec, first, last = self.sdk.GetImages16(1, 1, self.xpixels)
+        self.sdk.handle_return(ret)
+
+    def draw(self):
+        if self.spec is None:
+            print('No spectrum to draw')
+            return False
+        self.ax.cla()
+        self.ax.plot(self.spec)
+        self.canvas.draw()
+
+    def prepare_and_acquire_and_draw(self):
+        self.button_acquire.config(state=tk.DISABLED)
+        self.prepare_acquisition()
+        self.acquire()
+        self.draw()
+        self.button_acquire.config(state=tk.ACTIVE)
+        self.button_save.config(state=tk.ACTIVE)
+
+    def save_as(self, filename=None):
+        if filename is None:
+            directory = os.getcwd()
+            path = os.path.join(directory, self.entry_filename.get())
+        else:
+            path = filename
+
+        if self.extension.get() == '.sif':
+            self.save_as_sif(path + '.sif')
+        elif self.extension.get() == '.asc':
+            self.save_as_asc(path + '.asc')
+        else:
+            self.state.set('Invalid extension')
+
+    def save_as_sif(self, path):
+        self.sdk.handle_return(self.sdk.SaveAsSif(path))
+
+    def save_as_asc(self, path):
+        spec_str = list(map(lambda x: str(x) + '\n', self.spec))
+        with open(path, 'w') as f:
+            f.writelines(spec_str)
+
+    def get_start(self):
+        x = self.x_st.get()
+        y = self.y_st.get()
+        z = self.z_st.get()
+        return [x, y, z]
+
+    def get_current(self):
+        x = self.x_cr.get()
+        y = self.y_cr.get()
+        z = self.z_cr.get()
+        return [x, y, z]
+
+    def get_goal(self):
+        x = self.x_gl.get()
+        y = self.y_gl.get()
+        z = self.z_gl.get()
+        return [x, y, z]
 
     def start_auto(self):
-        self.aw.prepare_acquisition()
-        self.sw.sc.set_speed_max()
+        if self.max_step.get() <= 0:
+            self.state.set('Step must be greater than 0')
+            return
+        self.state.set('Setting up...')
 
+        self.prepare_acquisition()
+
+        folder = os.path.join(os.getcwd(), 'data')
+        if not os.path.exists(folder):
+            os.mkdir(folder)
+
+        self.hsc.set_speed_max()
         # 座標計算
-        self.start = self.sw.get_start()
-        self.start = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, self.start)))
-        self.goal = self.sw.get_goal()
-        self.goal = np.array(list(map(lambda x: float(x) / UM_PER_PULSE, self.goal)))
-
-        # ProgressBarの設定
-        step = int(self.entry_step.get())
-        self.progressbar.config(maximum=step + 1)
-        self.number.set(0)
+        self.start = np.array(self.get_start()).astype('float') / UM_PER_PULSE
+        current = np.array(self.get_current()).astype('float') / UM_PER_PULSE
+        self.goal = np.array(self.get_goal()).astype('float') / UM_PER_PULSE
 
         # start位置に移動
-        self.sw.sc.move_abs(self.start)
-        distance = np.linalg.norm(np.array(self.sw.sc.get_pos()) - np.array(self.sw.get_start()))
-        interval = distance / 1000  # set_speed_max()で20000um/s以上になっているはず・・・だがうまくいっていない
-        time.sleep(max([1, interval]))  # 距離が近くても念のため1秒は待つ
-        self.interval = np.linalg.norm(np.array(self.sw.get_goal()) - np.array(self.sw.get_start())) / 1000
+        self.hsc.move_abs(self.start)
+        distance = np.linalg.norm(np.array(current - self.start))
+        time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
-        self.auto()
+        # ProgressBarの設定
+        self.progressbar.config(maximum=self.max_step.get())
+        self.number.set(1)
 
-    def auto(self):
-        step = int(self.entry_step.get())
-        number = self.number.get()
-        self.state.set(f'Acquisition {number} of {step}')
-        point = self.start + (self.goal - self.start) * number / step
-        self.sw.sc.move_abs(point)
-        time.sleep(max([1, self.interval]))  # 距離が近くても念のため1秒は待つ
+        self.create_and_start_thread_acq()
 
-        self.aw.acquire()
-        self.aw.save_as_asc(os.getcwd() + f'/data/acquisition{number}of{step}.asc')
+    def auto_acquire_and_save(self):
+        self.button_acquire.config(state=tk.DISABLED)
+        self.button_save.config(state=tk.DISABLED)
+        self.button_start_auto.config(state=tk.DISABLED)
 
-        if number <= step:
-            self.number.set(number + 1)
-            self.master.after(100, self.auto)
-        else:
-            self.state.set('Acquisition Finished')
+        number = 1
+        step = self.max_step.get()
+        while number <= step:
+            self.state.set(f'Acquisition {number} of {step}')
+
+            point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
+            self.hsc.move_abs(point)
+            self.locations.append(point)
+            distance = np.linalg.norm(np.array(point - self.start))
+            time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
+
+            self.acquire()
+
+            self.save_as_asc(os.path.join(os.getcwd(), 'data', f'{number}of{step}.asc'))
+
+            number += 1
+            self.number.set(number)
+            self.locations_to_csv()
+
+        self.state.set('Auto Acquisition Finished')
+        self.button_acquire.config(state=tk.ACTIVE)
+        self.button_save.config(state=tk.ACTIVE)
+        self.button_start_auto.config(state=tk.ACTIVE)
+
+    def locations_to_csv(self):
+        filename = os.path.join(os.getcwd(), 'data', 'location.csv')
+        with open(filename, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerows(self.locations)
+
+    def quit(self):
+        if self.cl.mode == 'RELEASE':
+            self.sdk.ShutDown()
+            self.ser.close()
+        self.master.destroy()
+        sys.exit()  # デーモン化してあるスレッドはここで死ぬ
 
 
 def main():
-    # sdk = atmcd()  ####
-    # ser = serial.Serial('COM6', 38400)
-
     root = tk.Tk()
-    root.protocol('WM_DELETE_WINDOW', lambda: quit_me(root))
-    # app = MainWindow(master=root, sdk=sdk, ser=ser)  ####
-    app = MainWindow(master=root)
+    root.option_add("*font", FONT)
+    root.protocol('WM_DELETE_WINDOW', (lambda: 'pass')())  # QUITボタン以外の終了操作を許可しない
+    app = MinimalWindow(master=root, config='./config.json')
     app.mainloop()
-
-    # sdk.ShutDown()  ####
-    # ser.close()
 
 
 if __name__ == '__main__':

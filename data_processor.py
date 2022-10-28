@@ -140,9 +140,10 @@ class WholeDataProcessor(DataProcessor):
         df_list = []
         for path, center in zip(path_list, center_list):
             self.load_data(path, center)
-            self.calibrate(show=show)
+            # self.calibrate(show=show)
             self.remove_cosmic_ray(times=cosmic_ray_removal)
-            self.x = np.hstack([self.x, self.wl_data_calibrated])
+            # self.x = np.hstack([self.x, self.wl_data_calibrated])
+            self.x = np.hstack([self.x, self.wl_data])
             df_list.append(self.df_without_cosmic_ray)
         df = pd.concat(df_list, axis=1)
         self.y = np.arange(0, df.shape[0])
@@ -152,7 +153,7 @@ class WholeDataProcessor(DataProcessor):
         self.z_scaled = (self.z - zmean) / zstd * 30
 
     def draw_3d(self):
-        s = mlab.surf(self.z_scaled)
+        s = mlab.surf(self.x * 100, self.y, self.z_scaled)
         mlab.show()
 
 
@@ -162,11 +163,18 @@ def main():
         r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\220616\data_630",
         r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\220617\data_760"
     ]
+    path_list = [
+        r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\221020\Rayleigh",
+    ]
+    path_list = [
+        r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\221024\data",
+    ]
 
     center_list = [500, 630, 760]
+    center_list = [500]
 
-    dp = WholeDataProcessor(path_list=path_list, center_list=center_list, show=True, cosmic_ray_removal=3)
-    dp.draw_3d()
+    wdp = WholeDataProcessor(path_list=path_list, center_list=center_list, show=True, cosmic_ray_removal=3)
+    wdp.draw_3d()
 
 
 if __name__ == '__main__':
