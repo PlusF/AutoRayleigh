@@ -395,7 +395,7 @@ def main():
     root = tk.Tk()
     root.option_add("*font", FONT)
     root.protocol('WM_DELETE_WINDOW', (lambda: 'pass')())  # QUITボタン以外の終了操作を許可しない
-    app = MinimalWindow(master=root)
+    app = MinimalWindow(master=root, config='./config.json')
     app.mainloop()
 
 
