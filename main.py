@@ -42,7 +42,7 @@ class MinimalWindow(tk.Frame):
             self.lib = ctypes.cdll.LoadLibrary("TLCCS_64.dll")
             self.ccs_handle = ctypes.c_int(0)
             self.lib.tlccs_init(b"USB0::0x1313::0x8089::M00331284::RAW", 1, 1, ctypes.byref(self.ccs_handle))
-            self.ser = serial.Serial(self.cl.port, self.cl.baudrate)
+            self.ser = serial.Serial(self.cl.port, self.cl.baudrate, write_timeout=0)
             self.stage = HSC103Controller(self.ser)
         elif self.cl.mode == 'DEBUG':
             self.lib = EmptyLib()
@@ -225,9 +225,9 @@ class MinimalWindow(tk.Frame):
         if exposure < 1e-5:
             print('exposure must be greater than 1e-5')
             exposure = 1e-5
-        elif exposure > 60:
-            print('exposure must be less than 60')
-            exposure = 1e-5
+        elif exposure > 50:
+            print('exposure must be less than 50')
+            exposure = 50
         self.entry_exposure_time.delete(0, tk.END)
         self.entry_exposure_time.insert(0, str(exposure))
         integration_time = ctypes.c_double(exposure)
@@ -236,7 +236,7 @@ class MinimalWindow(tk.Frame):
     def acquire(self):
         # start scan
         self.lib.tlccs_startScan(self.ccs_handle)
-        time.sleep(float(self.entry_exposure_time.get()) * 1.6)  # exposureの1.6倍以上の時間を置かないとうまくシグナルが得られない
+        time.sleep(float(self.entry_exposure_time.get()) * 2.0)  # exposureの2倍以上の時間を置かないとうまくシグナルが得られない
         self.wavelengths = (ctypes.c_double * 3648)()
         self.lib.tlccs_getWavelengthData(self.ccs_handle, 0, ctypes.byref(self.wavelengths), ctypes.c_void_p(None), ctypes.c_void_p(None))
         # retrieve data
@@ -245,7 +245,7 @@ class MinimalWindow(tk.Frame):
 
     def draw(self):
         self.ax.cla()
-        self.ax.plot(self.wavelengths, self.data_array)
+        self.ax.plot(self.wavelengths, self.data_array, linewidth=0.3)
         self.canvas.draw()
 
     def prepare_and_acquire_and_draw(self):
@@ -269,7 +269,7 @@ class MinimalWindow(tk.Frame):
             self.state.set('Invalid extension')
 
     def save_as_csv(self, path):
-        x = np.array(self.wavelengths).reshape(-1, 1)
+        x = np.array(self.wavelengths).reshape(-1, 1) - 10
         y = np.array(self.data_array).reshape(-1, 1)
         spec = np.hstack([x, y])
         spec_str = list(map(lambda val: str(val[0]) + ',' + str(val[1]) + '\n', spec))
@@ -331,7 +331,7 @@ class MinimalWindow(tk.Frame):
 
             point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
             self.stage.move_abs(point)
-            self.locations.append(point)
+            self.locations.append(point * UM_PER_PULSE)
             distance = np.linalg.norm(np.array(point - self.start))
             time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 

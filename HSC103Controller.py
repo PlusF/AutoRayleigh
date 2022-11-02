@@ -42,6 +42,8 @@ class HSC103Controller:
             pos_list = list(map(int, msg.split(',')))
         except ValueError:
             pos_list = [0, 0, 0]
+        if len(pos_list) != 3:
+            pos_list = [0, 0, 0]
         return pos_list
 
     def move_abs(self, values: list):

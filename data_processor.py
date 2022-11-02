@@ -169,6 +169,9 @@ def main():
     path_list = [
         r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\221024\data",
     ]
+    path_list = [
+        r"G:\共有ドライブ\Laboratory\Individuals\kaneda\Data_M1\221027\data",
+    ]
 
     center_list = [500, 630, 760]
     center_list = [500]
