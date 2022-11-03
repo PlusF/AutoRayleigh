@@ -38,6 +38,12 @@ class MinimalWindow(tk.Frame):
         self.create_and_start_thread_pos()
 
     def open_ports(self):
+        """
+        RELEASE版なら、各装置との接続をセットアップする
+        DEBUG版はプログラムの挙動を見られるように適宜設定する
+        Returns:
+
+        """
         if self.cl.mode == 'RELEASE':
             os.chdir(r"C:\Program Files\IVI Foundation\VISA\Win64\Bin")
             self.lib = ctypes.cdll.LoadLibrary("TLCCS_64.dll")
@@ -54,6 +60,10 @@ class MinimalWindow(tk.Frame):
             raise ValueError('Error with config.json. mode must be DEBUG or RELEASE.')
 
     def set_style(self):
+        """
+        アプリの見た目を整える
+        Returns:
+        """
         style = ttk.Style()
         if os.name == 'nt':
             style.theme_use('winnative')  # windowsにしかないテーマ
@@ -61,24 +71,37 @@ class MinimalWindow(tk.Frame):
         style.configure("red.TButton", activeforeground='red', foreground='red')
 
     def create_and_start_thread_pos(self):
-        # update_positionの受信待ちで画面がフリーズしないようthreadを立てる
+        """
+        update_positionの受信待ちで画面がフリーズしないようthreadを立てる
+        Returns:
+        """
         self.thread_pos = threading.Thread(target=self.update_position)
         self.thread_pos.daemon = True
         self.thread_pos.start()
 
     def create_and_start_thread_acq(self):
-        # 画面がフリーズしないようthreadを立てる
+        """
+        測定待ちのtime.sleepで画面がフリーズしないようthreadを立てる
+        Returns:
+        """
         self.thread_acq = threading.Thread(target=self.prepare_and_acquire_and_draw)
         self.thread_acq.daemon = True
         self.thread_acq.start()
 
     def create_and_start_thread_auto(self):
-        # autoで画面がフリーズしないようthreadを立てる
+        """
+        auto acquisitionで画面がフリーズしないようthreadを立てる
+        Returns:
+        """
         self.thread_auto = threading.Thread(target=self.auto_acquire_and_save)
         self.thread_auto.daemon = True
         self.thread_auto.start()
 
     def create_widgets(self):
+        """
+        GUIアプリのウィジェットを作成
+        Returns:
+        """
         self.frame_hsc = ttk.LabelFrame(master=self.master, text='HSC-103')
         self.frame_thorlab = ttk.LabelFrame(master=self.master, text='CCS')
         self.frame_auto = ttk.LabelFrame(master=self.master, text='Auto Scan')
@@ -121,7 +144,7 @@ class MinimalWindow(tk.Frame):
         self.button_set_start = ttk.Button(master=self.frame_hsc, text='Set Start', command=self.set_start, width=WIDTH)
         self.button_set_goal = ttk.Button(master=self.frame_hsc, text='Set Goal', command=self.set_goal, width=WIDTH)
         self.button_go = ttk.Button(master=self.frame_hsc, text='GO', command=self.go, width=WIDTH)
-        self.button_stop = ttk.Button(master=self.frame_hsc, text='STOP', command=self.stop, width=WIDTH, style='red.TButton')
+        self.button_stop = ttk.Button(master=self.frame_hsc, text='STOP', command=self.stage.stop_emergency, width=WIDTH, style='red.TButton')
         row_0 = 0
         row_1 = 1
         row_2 = 4
@@ -203,6 +226,11 @@ class MinimalWindow(tk.Frame):
         self.button_quit.grid(row=3, column=0, sticky=tk.NSEW)
 
     def update_position(self):
+        """
+        threadで動かす関数
+        config.jsonで指定されたFPSで動くように3軸ステージの座標をアップデートする
+        Returns:
+        """
         while True:
             x, y, z = self.stage.get_position()
             self.x_cr.set(round(x * UM_PER_PULSE, 2))
@@ -226,10 +254,13 @@ class MinimalWindow(tk.Frame):
         z = (float(self.entry_z.get()) - float(self.z_cr.get())) / UM_PER_PULSE
         self.stage.move_linear([x, y, z])
 
-    def stop(self):
-        self.stage.stop_emergency()
-
     def prepare_acquisition(self):
+        """
+        測定のセットアップをする。と言っても露光時間の設定だけ。
+        なぜかわからないが、露光時間を60秒に設定しようとするとスペクトルが得られないので
+        安全をとって50秒をmaxにしている
+        Returns:
+        """
         # set integration time in  seconds, ranging from 1e-5 to 6e1
         exposure = float(self.entry_exposure_time.get())
         if exposure < 1e-5:
@@ -244,6 +275,12 @@ class MinimalWindow(tk.Frame):
         self.lib.tlccs_setIntegrationTime(self.ccs_handle, integration_time)
 
     def acquire(self):
+        """
+        実際の測定の部分
+        startScanして、exposureの2倍の時間を待ってあげると確実にスペクトルが取得できる
+        中身はほぼthorlabさんからもらったコードなので詳細は不明
+        Returns:
+        """
         if self.cl.mode == 'RELEASE':
             # start scan
             self.lib.tlccs_startScan(self.ccs_handle)
@@ -260,6 +297,13 @@ class MinimalWindow(tk.Frame):
             print('acquired')
 
     def wait(self, duration):
+        """
+        プログレスバーで進捗がわかるようにする
+        Args:
+            duration: 待ちたい時間
+
+        Returns:
+        """
         duration = math.ceil(duration)
         self.progress_acq.set(0)
         self.progressbar_acq.config(maximum=duration)
@@ -270,6 +314,11 @@ class MinimalWindow(tk.Frame):
         self.msg.set('Acquisition Finished')
 
     def draw(self):
+        """
+        スペクトルを描画
+        Mac環境でデバッグしているとcanvasの更新がなぜかできないのでprintするだけ
+        Returns:
+        """
         if self.cl.mode == 'RELEASE':
             self.ax.cla()
             self.ax.plot(self.wavelengths, self.data_array, linewidth=0.3)
@@ -278,6 +327,11 @@ class MinimalWindow(tk.Frame):
             print('draw')
 
     def prepare_and_acquire_and_draw(self):
+        """
+        buttonを連続で押せないようにしつつ、prepare, acquire, drawまで全てやる
+        固まらないようthreadで実行する
+        Returns:
+        """
         self.button_acquire.config(state=tk.DISABLED)
         self.prepare_acquisition()
         self.acquire()
@@ -286,10 +340,21 @@ class MinimalWindow(tk.Frame):
         self.button_save.config(state=tk.ACTIVE)
 
     def save_as(self, filename=None):
+        """
+        スペクトルデータを保存する関数
+        config.jsonでディレクトリを指定
+        単発スキャンの時はエントリーボックスに入力されたファイル名で保存
+        自動スキャンの時は、自動でファイル名が指定される
+        Args:
+            filename: ファイル名（ディレクトリは含まない）
+        Returns:
+        """
         if filename is None:
+            # saveボタンから呼ばれた時
             directory = self.cl.folder
             path = os.path.join(directory, self.entry_filename.get())
         else:
+            # 自動スキャンの時
             path = filename
 
         if self.extension.get() == '.csv':
@@ -298,8 +363,14 @@ class MinimalWindow(tk.Frame):
             self.state.set('Invalid extension')
 
     def save_as_csv(self, path):
+        """
+        適切に形を整えてスペクトルをcsvファイルに格納する
+        Args:
+            path: 保存する(ディレクトリ+ファイル)名
+        Returns:
+        """
         if self.cl.mode == 'RELEASE':
-            x = np.array(self.wavelengths).reshape(-1, 1) - 10
+            x = np.array(self.wavelengths).reshape(-1, 1) - 10  # ざっくり -10 nm で合う
             y = np.array(self.data_array).reshape(-1, 1)
             spec = np.hstack([x, y])
             spec_str = list(map(lambda val: str(val[0]) + ',' + str(val[1]) + '\n', spec))
@@ -327,6 +398,11 @@ class MinimalWindow(tk.Frame):
         return [x, y, z]
 
     def start_auto(self):
+        """
+        自動スキャンのセットアップ
+        初期設定が完了したらthreadで自動スキャンを開始する
+        Returns:
+        """
         if self.max_step.get() <= 0:
             self.state.set('Step must be greater than 0')
             return
@@ -352,6 +428,11 @@ class MinimalWindow(tk.Frame):
         self.create_and_start_thread_auto()
 
     def auto_acquire_and_save(self):
+        """
+        自動スキャンの本体
+        スレッド内で実行される関数
+        Returns:
+        """
         self.button_acquire.config(state=tk.DISABLED)
         self.button_save.config(state=tk.DISABLED)
         self.button_start_auto.config(state=tk.DISABLED)
@@ -382,6 +463,10 @@ class MinimalWindow(tk.Frame):
         self.button_start_auto.config(state=tk.ACTIVE)
 
     def locations_to_csv(self):
+        """
+        自動スキャンの測定場所を記録する
+        Returns:
+        """
         if self.cl.mode == 'RELEASE':
             filename = os.path.join(self.cl.folder, 'location.csv')
             with open(filename, 'w', newline='') as f:
@@ -391,6 +476,12 @@ class MinimalWindow(tk.Frame):
             print('locations saved')
 
     def quit(self):
+        """
+        アプリを終了する
+        sys.exitすることでthreadを強制終了できる
+        そうしないと永遠に終了しなくなるので苦肉の策
+        Returns:
+        """
         if self.cl.mode == 'RELEASE':
             self.lib.tlccs_close(self.ccs_handle)
             self.ser.close()
