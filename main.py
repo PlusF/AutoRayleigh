@@ -30,7 +30,7 @@ class MinimalWindow(tk.Frame):
         self.open_ports()
 
         self.locations = [['x', 'y', 'z']]
-        self.wavelengths = self.data_array = None
+        self.wavelengths = self.data_accumulated = None
 
         self.set_style()
         self.create_widgets()
@@ -183,7 +183,12 @@ class MinimalWindow(tk.Frame):
         self.entry_exposure_time = ttk.Entry(master=self.frame_thorlab, width=WIDTH, justify=tk.CENTER)
         self.entry_exposure_time.insert(0, '10')
         self.label_second = ttk.Label(master=self.frame_thorlab, text='sec')
-        self.button_acquire = ttk.Button(master=self.frame_thorlab, text='Acquire', command=self.create_and_start_thread_acq, width=WIDTH * 3)
+        self.button_acquire = ttk.Button(master=self.frame_thorlab, text='Acquire', command=self.create_and_start_thread_acq, width=WIDTH * 2)
+        self.label_accumulation = ttk.Label(master=self.frame_thorlab, text='積算回数：')
+        self.entry_accumulation = ttk.Entry(master=self.frame_thorlab, width=WIDTH, justify=tk.CENTER)
+        self.entry_accumulation.insert(0, '1')
+        self.label_times = ttk.Label(master=self.frame_thorlab, text='回')
+        self.button_acquire = ttk.Button(master=self.frame_thorlab, text='Acquire', command=self.create_and_start_thread_acq, width=WIDTH * 2)
         self.progress_acq = tk.IntVar(value=0)
         self.progressbar_acq = ttk.Progressbar(master=self.frame_thorlab, orient=tk.HORIZONTAL, variable=self.progress_acq, maximum=10, length=200, mode='determinate')
         self.entry_filename = ttk.Entry(master=self.frame_thorlab, width=WIDTH, justify=tk.CENTER)
@@ -192,14 +197,17 @@ class MinimalWindow(tk.Frame):
         self.combobox_extension.config(font=('游ゴシック', 20))
         self.button_save = ttk.Button(master=self.frame_thorlab, text='Save', command=self.save_as, width=WIDTH)
         self.label_msg.grid(row=0, column=0, columnspan=3)
-        self.label_exposure_time.grid(row=4, column=0)
-        self.entry_exposure_time.grid(row=4, column=1)
-        self.label_second.grid(row=4, column=2)
-        self.button_acquire.grid(row=5, column=0, columnspan=2)
-        self.progressbar_acq.grid(row=5, column=2)
-        self.entry_filename.grid(row=6, column=0)
-        self.combobox_extension.grid(row=6, column=1)
-        self.button_save.grid(row=6, column=2)
+        self.label_exposure_time.grid(row=1, column=0)
+        self.entry_exposure_time.grid(row=1, column=1)
+        self.label_second.grid(row=1, column=2)
+        self.label_accumulation.grid(row=2, column=0)
+        self.entry_accumulation.grid(row=2, column=1)
+        self.label_times.grid(row=2, column=2)
+        self.button_acquire.grid(row=3, column=0, columnspan=2)
+        self.progressbar_acq.grid(row=3, column=2)
+        self.entry_filename.grid(row=4, column=0)
+        self.combobox_extension.grid(row=4, column=1)
+        self.button_save.grid(row=4, column=2)
 
         # frame_auto
         self.label_step = ttk.Label(master=self.frame_auto, text='回数：')
@@ -281,34 +289,40 @@ class MinimalWindow(tk.Frame):
         中身はほぼthorlabさんからもらったコードなので詳細は不明
         Returns:
         """
-        if self.cl.mode == 'RELEASE':
-            # start scan
-            self.lib.tlccs_startScan(self.ccs_handle)
-            time_to_wait = float(self.entry_exposure_time.get()) * 2.0  # exposureの2倍以上の時間を置かないとうまくシグナルが得られない
-            self.wait(time_to_wait)
-            self.wavelengths = (ctypes.c_double * 3648)()
-            self.lib.tlccs_getWavelengthData(self.ccs_handle, 0, ctypes.byref(self.wavelengths), ctypes.c_void_p(None), ctypes.c_void_p(None))
-            # retrieve data
-            self.data_array = (ctypes.c_double * 3648)()
-            self.lib.tlccs_getScanData(self.ccs_handle, ctypes.byref(self.data_array))
-        elif self.cl.mode == 'DEBUG':
-            print('acquiring')
-            self.wait(float(self.entry_exposure_time.get()) * 2.0)
-            print('acquired')
+        accumulation_times = int(self.entry_accumulation.get())
+        self.data_accumulated = 0
+        for i in range(accumulation_times):
+            if self.cl.mode == 'RELEASE':
+                # start scan
+                self.lib.tlccs_startScan(self.ccs_handle)
+                time_to_wait = float(self.entry_exposure_time.get()) * 2.0  # exposureの2倍以上の時間を置かないとうまくシグナルが得られない
+                self.wait(time_to_wait, i, accumulation_times)
+                wavelengths = (ctypes.c_double * 3648)()
+                self.lib.tlccs_getWavelengthData(self.ccs_handle, 0, ctypes.byref(wavelengths), ctypes.c_void_p(None), ctypes.c_void_p(None))
+                self.wavelengths = np.array(wavelengths) - 10  # ざっくり -10 nm で合う
+                # retrieve data
+                data_array = (ctypes.c_double * 3648)()
+                self.lib.tlccs_getScanData(self.ccs_handle, ctypes.byref(data_array))
+                self.data_accumulated += np.array(data_array)
+            elif self.cl.mode == 'DEBUG':
+                print('acquiring')
+                self.wait(float(self.entry_exposure_time.get()) * 2.0, i, accumulation_times)
+                print('acquired')
 
-    def wait(self, duration):
+    def wait(self, time_to_wait, i, accumulation_times):
         """
         プログレスバーで進捗がわかるようにする
         Args:
-            duration: 待ちたい時間
-
+            time_to_wait: 待ちたい時間
+            i: accumulationの何回目か
+            accumulation_times: 全部で何回accumulateするか
         Returns:
         """
-        duration = math.ceil(duration)
+        time_to_wait = math.ceil(time_to_wait)
         self.progress_acq.set(0)
-        self.progressbar_acq.config(maximum=duration)
-        for t in range(duration):
-            self.msg.set(f'Acquiring... {duration - t} seconds left')
+        self.progressbar_acq.config(maximum=time_to_wait)
+        for t in range(time_to_wait):
+            self.msg.set(f'Acquiring... ({i + 1} / {accumulation_times}) {time_to_wait - t} seconds left')
             time.sleep(1)
             self.progress_acq.set(t + 1)
         self.msg.set('Acquisition Finished')
@@ -321,7 +335,7 @@ class MinimalWindow(tk.Frame):
         """
         if self.cl.mode == 'RELEASE':
             self.ax.cla()
-            self.ax.plot(self.wavelengths, self.data_array, linewidth=0.3)
+            self.ax.plot(self.wavelengths, self.data_accumulated, linewidth=0.3)
             self.canvas.draw()
         elif self.cl.mode == 'DEBUG':
             print('draw')
@@ -332,10 +346,15 @@ class MinimalWindow(tk.Frame):
         固まらないようthreadで実行する
         Returns:
         """
+        self.entry_exposure_time.config(state=tk.DISABLED)
+        self.entry_accumulation.config(state=tk.DISABLED)
         self.button_acquire.config(state=tk.DISABLED)
+        self.button_save.config(state=tk.DISABLED)
         self.prepare_acquisition()
         self.acquire()
         self.draw()
+        self.entry_exposure_time.config(state=tk.ACTIVE)
+        self.entry_accumulation.config(state=tk.ACTIVE)
         self.button_acquire.config(state=tk.ACTIVE)
         self.button_save.config(state=tk.ACTIVE)
 
@@ -370,8 +389,8 @@ class MinimalWindow(tk.Frame):
         Returns:
         """
         if self.cl.mode == 'RELEASE':
-            x = np.array(self.wavelengths).reshape(-1, 1) - 10  # ざっくり -10 nm で合う
-            y = np.array(self.data_array).reshape(-1, 1)
+            x = self.wavelengths.reshape(-1, 1)
+            y = self.data_accumulated.reshape(-1, 1)
             spec = np.hstack([x, y])
             spec_str = list(map(lambda val: str(val[0]) + ',' + str(val[1]) + '\n', spec))
             with open(path, 'w') as f:
@@ -433,6 +452,8 @@ class MinimalWindow(tk.Frame):
         スレッド内で実行される関数
         Returns:
         """
+        self.entry_exposure_time.config(state=tk.DISABLED)
+        self.entry_accumulation.config(state=tk.DISABLED)
         self.button_acquire.config(state=tk.DISABLED)
         self.button_save.config(state=tk.DISABLED)
         self.button_start_auto.config(state=tk.DISABLED)
@@ -440,7 +461,8 @@ class MinimalWindow(tk.Frame):
         number = 1
         step = self.max_step.get()
         while number <= step:
-            self.state.set(f'Acquisition {number} of {step}... {math.ceil((step - number) * float(self.entry_exposure_time.get()) * 2 / 60)} minutes left')
+            time_left = math.ceil((step - number + 1) * float(self.entry_exposure_time.get()) * 2  * float(self.entry_accumulation.get()) / 60)
+            self.state.set(f'Acquisition {number} of {step}... {time_left} minutes left')
 
             point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
             self.stage.move_abs(point)
@@ -458,6 +480,8 @@ class MinimalWindow(tk.Frame):
             self.locations_to_csv()
 
         self.state.set('Auto Acquisition Finished')
+        self.entry_exposure_time.config(state=tk.ACTIVE)
+        self.entry_accumulation.config(state=tk.ACTIVE)
         self.button_acquire.config(state=tk.ACTIVE)
         self.button_save.config(state=tk.ACTIVE)
         self.button_start_auto.config(state=tk.ACTIVE)
