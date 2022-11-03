@@ -3,20 +3,20 @@ class EmptyLib:
         print('empty lib created')
 
     def tlccs_init(self, *args, **kwargs):
-        print('initialized', *args)
+        print('initialized')
 
     def tlccs_setIntegrationTime(self, *args, **kwargs):
-        print('setIntegrationTime', *args)
+        print('setIntegrationTime')
 
     def tlccs_startScan(self, *args, **kwargs):
-        print('startScan', *args)
+        print('startScan')
 
     def tlccs_getWavelengthData(self, *args, **kwargs):
-        print('getWavelengthData', *args)
+        print('getWavelengthData')
 
     def tlccs_getScanData(self, *args, **kwargs):
-        print('getScanData', *args)
+        print('getScanData')
 
     def tlccs_close(self, *args, **kwargs):
-        print('close', *args)
+        print('close')
 

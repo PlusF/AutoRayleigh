@@ -1,4 +1,4 @@
-import os, time, serial, threading, sys, csv, ctypes
+import os, time, serial, threading, sys, csv, ctypes, math
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
@@ -30,6 +30,7 @@ class MinimalWindow(tk.Frame):
         self.open_ports()
 
         self.locations = [['x', 'y', 'z']]
+        self.wavelengths = self.data_array = None
 
         self.set_style()
         self.create_widgets()
@@ -66,10 +67,16 @@ class MinimalWindow(tk.Frame):
         self.thread_pos.start()
 
     def create_and_start_thread_acq(self):
-        # autoで画面がフリーズしないようthreadを立てる
-        self.thread_acq = threading.Thread(target=self.auto_acquire_and_save)
+        # 画面がフリーズしないようthreadを立てる
+        self.thread_acq = threading.Thread(target=self.prepare_and_acquire_and_draw)
         self.thread_acq.daemon = True
         self.thread_acq.start()
+
+    def create_and_start_thread_auto(self):
+        # autoで画面がフリーズしないようthreadを立てる
+        self.thread_auto = threading.Thread(target=self.auto_acquire_and_save)
+        self.thread_auto.daemon = True
+        self.thread_auto.start()
 
     def create_widgets(self):
         self.frame_hsc = ttk.LabelFrame(master=self.master, text='HSC-103')
@@ -153,17 +160,20 @@ class MinimalWindow(tk.Frame):
         self.entry_exposure_time = ttk.Entry(master=self.frame_thorlab, width=WIDTH, justify=tk.CENTER)
         self.entry_exposure_time.insert(0, '10')
         self.label_second = ttk.Label(master=self.frame_thorlab, text='sec')
-        self.button_acquire = ttk.Button(master=self.frame_thorlab, text='Acquire', command=self.prepare_and_acquire_and_draw, width=WIDTH * 3)
+        self.button_acquire = ttk.Button(master=self.frame_thorlab, text='Acquire', command=self.create_and_start_thread_acq, width=WIDTH * 3)
+        self.progress_acq = tk.IntVar(value=0)
+        self.progressbar_acq = ttk.Progressbar(master=self.frame_thorlab, orient=tk.HORIZONTAL, variable=self.progress_acq, maximum=10, length=200, mode='determinate')
         self.entry_filename = ttk.Entry(master=self.frame_thorlab, width=WIDTH, justify=tk.CENTER)
         self.entry_filename.insert(0, 'test01')
         self.combobox_extension = ttk.Combobox(master=self.frame_thorlab, values=tuple('.csv'), textvariable=self.extension, width=WIDTH, justify=tk.CENTER)
         self.combobox_extension.config(font=('游ゴシック', 20))
         self.button_save = ttk.Button(master=self.frame_thorlab, text='Save', command=self.save_as, width=WIDTH)
-        self.label_msg.grid(row=0, column=1, columnspan=3)
+        self.label_msg.grid(row=0, column=0, columnspan=3)
         self.label_exposure_time.grid(row=4, column=0)
         self.entry_exposure_time.grid(row=4, column=1)
         self.label_second.grid(row=4, column=2)
-        self.button_acquire.grid(row=5, column=0, columnspan=3)
+        self.button_acquire.grid(row=5, column=0, columnspan=2)
+        self.progressbar_acq.grid(row=5, column=2)
         self.entry_filename.grid(row=6, column=0)
         self.combobox_extension.grid(row=6, column=1)
         self.button_save.grid(row=6, column=2)
@@ -174,13 +184,13 @@ class MinimalWindow(tk.Frame):
         self.entry_step = ttk.Entry(master=self.frame_auto, textvariable=self.max_step, width=WIDTH, justify=tk.CENTER)
         self.button_start_auto = ttk.Button(master=self.frame_auto, text='START', command=self.start_auto, width=WIDTH, style='default.TButton')
         self.number = tk.IntVar(value=0)
-        self.progressbar = ttk.Progressbar(master=self.frame_auto, orient=tk.HORIZONTAL, variable=self.number, maximum=10, length=200, mode='determinate')
-        self.state = tk.StringVar(value='Not Ready')
+        self.progressbar_auto = ttk.Progressbar(master=self.frame_auto, orient=tk.HORIZONTAL, variable=self.number, maximum=10, length=200, mode='determinate')
+        self.state = tk.StringVar(value='Ready')
         self.label_state = ttk.Label(master=self.frame_auto, textvariable=self.state)
         self.label_step.grid(row=0, column=0)
         self.entry_step.grid(row=0, column=1)
         self.button_start_auto.grid(row=0, column=2)
-        self.progressbar.grid(row=0, column=3)
+        self.progressbar_auto.grid(row=0, column=3)
         self.label_state.grid(row=1, column=0, columnspan=4)
 
         # frame_graph
@@ -234,19 +244,38 @@ class MinimalWindow(tk.Frame):
         self.lib.tlccs_setIntegrationTime(self.ccs_handle, integration_time)
 
     def acquire(self):
-        # start scan
-        self.lib.tlccs_startScan(self.ccs_handle)
-        time.sleep(float(self.entry_exposure_time.get()) * 2.0)  # exposureの2倍以上の時間を置かないとうまくシグナルが得られない
-        self.wavelengths = (ctypes.c_double * 3648)()
-        self.lib.tlccs_getWavelengthData(self.ccs_handle, 0, ctypes.byref(self.wavelengths), ctypes.c_void_p(None), ctypes.c_void_p(None))
-        # retrieve data
-        self.data_array = (ctypes.c_double * 3648)()
-        self.lib.tlccs_getScanData(self.ccs_handle, ctypes.byref(self.data_array))
+        if self.cl.mode == 'RELEASE':
+            # start scan
+            self.lib.tlccs_startScan(self.ccs_handle)
+            time_to_wait = float(self.entry_exposure_time.get()) * 2.0  # exposureの2倍以上の時間を置かないとうまくシグナルが得られない
+            self.wait(time_to_wait)
+            self.wavelengths = (ctypes.c_double * 3648)()
+            self.lib.tlccs_getWavelengthData(self.ccs_handle, 0, ctypes.byref(self.wavelengths), ctypes.c_void_p(None), ctypes.c_void_p(None))
+            # retrieve data
+            self.data_array = (ctypes.c_double * 3648)()
+            self.lib.tlccs_getScanData(self.ccs_handle, ctypes.byref(self.data_array))
+        elif self.cl.mode == 'DEBUG':
+            print('acquiring')
+            self.wait(float(self.entry_exposure_time.get()) * 2.0)
+            print('acquired')
+
+    def wait(self, duration):
+        duration = math.ceil(duration)
+        self.progress_acq.set(0)
+        self.progressbar_acq.config(maximum=duration)
+        for t in range(duration):
+            self.msg.set(f'Acquiring... {duration - t} seconds left')
+            time.sleep(1)
+            self.progress_acq.set(t + 1)
+        self.msg.set('Acquisition Finished')
 
     def draw(self):
-        self.ax.cla()
-        self.ax.plot(self.wavelengths, self.data_array, linewidth=0.3)
-        self.canvas.draw()
+        if self.cl.mode == 'RELEASE':
+            self.ax.cla()
+            self.ax.plot(self.wavelengths, self.data_array, linewidth=0.3)
+            self.canvas.draw()
+        elif self.cl.mode == 'DEBUG':
+            print('draw')
 
     def prepare_and_acquire_and_draw(self):
         self.button_acquire.config(state=tk.DISABLED)
@@ -269,12 +298,15 @@ class MinimalWindow(tk.Frame):
             self.state.set('Invalid extension')
 
     def save_as_csv(self, path):
-        x = np.array(self.wavelengths).reshape(-1, 1) - 10
-        y = np.array(self.data_array).reshape(-1, 1)
-        spec = np.hstack([x, y])
-        spec_str = list(map(lambda val: str(val[0]) + ',' + str(val[1]) + '\n', spec))
-        with open(path, 'w') as f:
-            f.writelines(spec_str)
+        if self.cl.mode == 'RELEASE':
+            x = np.array(self.wavelengths).reshape(-1, 1) - 10
+            y = np.array(self.data_array).reshape(-1, 1)
+            spec = np.hstack([x, y])
+            spec_str = list(map(lambda val: str(val[0]) + ',' + str(val[1]) + '\n', spec))
+            with open(path, 'w') as f:
+                f.writelines(spec_str)
+        elif self.cl.mode == 'DEBUG':
+            print(f'save to {path}')
 
     def get_start(self):
         x = self.x_st.get()
@@ -314,10 +346,10 @@ class MinimalWindow(tk.Frame):
         time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
         # ProgressBarの設定
-        self.progressbar.config(maximum=self.max_step.get())
+        self.progressbar_auto.config(maximum=self.max_step.get())
         self.number.set(1)
 
-        self.create_and_start_thread_acq()
+        self.create_and_start_thread_auto()
 
     def auto_acquire_and_save(self):
         self.button_acquire.config(state=tk.DISABLED)
@@ -327,7 +359,7 @@ class MinimalWindow(tk.Frame):
         number = 1
         step = self.max_step.get()
         while number <= step:
-            self.state.set(f'Acquisition {number} of {step}')
+            self.state.set(f'Acquisition {number} of {step}... {math.ceil((step - number) * float(self.entry_exposure_time.get()) * 2 / 60)} minutes left')
 
             point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
             self.stage.move_abs(point)
@@ -336,6 +368,7 @@ class MinimalWindow(tk.Frame):
             time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
             self.acquire()
+            self.draw()
 
             self.save_as_csv(os.path.join(self.cl.folder, f'{number}of{step}.csv'))
 
