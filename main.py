@@ -37,6 +37,8 @@ class MinimalWindow(tk.Frame):
 
         self.create_and_start_thread_pos()
 
+        self.update_graph()
+
     def open_ports(self):
         """
         RELEASE版なら、各装置との接続をセットアップする
@@ -84,7 +86,7 @@ class MinimalWindow(tk.Frame):
         測定待ちのtime.sleepで画面がフリーズしないようthreadを立てる
         Returns:
         """
-        self.thread_acq = threading.Thread(target=self.prepare_and_acquire_and_draw)
+        self.thread_acq = threading.Thread(target=self.prepare_and_acquire)
         self.thread_acq.daemon = True
         self.thread_acq.start()
 
@@ -233,6 +235,25 @@ class MinimalWindow(tk.Frame):
         self.button_quit = ttk.Button(master=self.master, text='QUIT', command=self.quit, style='red.TButton')
         self.button_quit.grid(row=3, column=0, sticky=tk.NSEW)
 
+    def update_graph(self):
+        # グラフのアップデートはスレッドでは行えないのでmainloop内で定期実行する
+        if self.data_accumulated is None:
+            pass
+        elif isinstance(self.data_accumulated, int) and self.data_accumulated == 0:
+            pass
+        else:
+            self.draw()
+        self.master.after(1000, self.update_graph)
+
+    def draw(self):
+        """
+        スペクトルを描画
+        Returns:
+        """
+        self.ax.cla()
+        self.ax.plot(self.wavelengths, self.data_accumulated, linewidth=0.3)
+        self.canvas.draw()
+
     def update_position(self):
         """
         threadで動かす関数
@@ -307,6 +328,8 @@ class MinimalWindow(tk.Frame):
             elif self.cl.mode == 'DEBUG':
                 print('acquiring')
                 self.wait(float(self.entry_exposure_time.get()) * 2.0, i, accumulation_times)
+                self.wavelengths = np.linspace(0, np.random.rand() * 10, 3000)
+                self.data_accumulated += np.sin(self.wavelengths)
                 print('acquired')
 
     def wait(self, time_to_wait, i, accumulation_times):
@@ -327,20 +350,7 @@ class MinimalWindow(tk.Frame):
             self.progress_acq.set(t + 1)
         self.msg.set('Acquisition Finished')
 
-    def draw(self):
-        """
-        スペクトルを描画
-        Mac環境でデバッグしているとcanvasの更新がなぜかできないのでprintするだけ
-        Returns:
-        """
-        if self.cl.mode == 'RELEASE':
-            self.ax.cla()
-            self.ax.plot(self.wavelengths, self.data_accumulated, linewidth=0.3)
-            self.canvas.draw()
-        elif self.cl.mode == 'DEBUG':
-            print('draw')
-
-    def prepare_and_acquire_and_draw(self):
+    def prepare_and_acquire(self):
         """
         buttonを連続で押せないようにしつつ、prepare, acquire, drawまで全てやる
         固まらないようthreadで実行する
@@ -352,7 +362,6 @@ class MinimalWindow(tk.Frame):
         self.button_save.config(state=tk.DISABLED)
         self.prepare_acquisition()
         self.acquire()
-        self.draw()
         self.entry_exposure_time.config(state=tk.ACTIVE)
         self.entry_accumulation.config(state=tk.ACTIVE)
         self.button_acquire.config(state=tk.ACTIVE)
@@ -471,7 +480,6 @@ class MinimalWindow(tk.Frame):
             time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
             self.acquire()
-            self.draw()
 
             self.save_as_csv(os.path.join(self.cl.folder, f'{number}of{step}.csv'))
 
