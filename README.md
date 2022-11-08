@@ -1,4 +1,5 @@
-# SCANT
+# RAS
+RAS stands for Rayleigh Auto Scan
 Rayleigh散乱スペクトルの自動取得ソフト
 
 # SKStage.py
