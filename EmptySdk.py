@@ -1,5 +1,7 @@
-from pyAndorSDK2 import atmcd_codes, atmcd_errors
-import numpy as np
+import os
+if os.name == 'nt':
+    from pyAndorSDK2 import atmcd_codes, atmcd_errors
+import numpy as npf
 
 
 class EmptySdk:
