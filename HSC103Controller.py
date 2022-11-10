@@ -77,8 +77,8 @@ class HSC103Controller:
             print('stop list must contain [axis1(0 or 1), axis2(0 or 1), axis3(0 or 1)]')
             return False
 
-        order = 'K:' + val2str([1, 2, 3] + coord)
-        msg = self.send(order)
+        order = 'K:' + ','.join([str(int(val)) for val in [1, 2, 3] + coord])
+        self.send(order)
 
     def jog(self, args: list):
         """
@@ -137,7 +137,7 @@ class HSC103Controller:
             print('speed value out of range.\n1<=slow<=fast<=4000000, 1<=rate<=1000.')
             return False
 
-        order = 'D:' + ','.join([str(int(val)) for val in args] )
+        order = 'D:' + ','.join([str(int(val)) for val in args])
         self.send(order)
 
     def set_speed_all(self, args: list):

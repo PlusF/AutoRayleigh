@@ -1,4 +1,4 @@
-import os, time, serial, threading, sys, csv
+import os, time, serial, threading, sys, csv, math
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
@@ -25,15 +25,23 @@ class MinimalWindow(tk.Frame):
         self.master.title('SCANT')
 
         self.cl = ConfigLoader(config)
+
+        if self.cl.mode == 'RELEASE':
+            folder = self.cl.folder
+            if not os.path.exists(folder):
+                os.mkdir(folder)
+
         self.open_ports()
 
-        self.spec = None
+        self.spec_accumulated = None
         self.locations = [['x', 'y', 'z']]
 
         self.set_style()
         self.create_widgets()
 
         self.create_and_start_thread_pos()
+
+        self.update_graph()
 
     def open_ports(self):
         if self.cl.mode == 'RELEASE':
@@ -60,11 +68,23 @@ class MinimalWindow(tk.Frame):
         self.thread_pos.daemon = True
         self.thread_pos.start()
 
+    def create_and_start_thread_cool(self):
+        # update_temperature用のthreadを立てる
+        self.thread_cool = threading.Thread(target=self.update_temperature)
+        self.thread_cool.daemon = True
+        self.thread_cool.start()
+
     def create_and_start_thread_acq(self):
         # autoで画面がフリーズしないようthreadを立てる
-        self.thread_acq = threading.Thread(target=self.auto_acquire_and_save)
+        self.thread_acq = threading.Thread(target=self.prepare_and_acquire)
         self.thread_acq.daemon = True
         self.thread_acq.start()
+
+    def create_and_start_thread_auto(self):
+        # autoで画面がフリーズしないようthreadを立てる
+        self.thread_auto = threading.Thread(target=self.auto_acquire_and_save)
+        self.thread_auto.daemon = True
+        self.thread_auto.start()
 
     def create_widgets(self):
         self.frame_hsc = ttk.LabelFrame(master=self.master, text='HSC-103')
@@ -149,10 +169,14 @@ class MinimalWindow(tk.Frame):
         self.label_std_temperature = ttk.Label(master=self.frame_andor, text='目標：' + str(self.cl.temperature) + '℃')
         self.label_temperature = ttk.Label(master=self.frame_andor, textvariable=self.temperature, background='red', foreground='white')
         self.label_exposure_time = ttk.Label(master=self.frame_andor, text='露光時間：')
-        self.entry_exposure_time = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
-        self.entry_exposure_time.insert(0, '10')
+        self.exposure_time = tk.DoubleVar(value=10)
+        self.entry_exposure_time = ttk.Entry(master=self.frame_andor, textvariable=self.exposure_time, width=WIDTH, justify=tk.CENTER)
         self.label_second = ttk.Label(master=self.frame_andor, text='sec')
-        self.button_acquire = ttk.Button(master=self.frame_andor, text='Acquire', command=self.prepare_and_acquire_and_draw, state=tk.DISABLED, width=WIDTH * 3)
+        self.label_accumulation_times = ttk.Label(master=self.frame_andor, text='積算回数：')
+        self.accumulation_times = tk.IntVar(value=1)
+        self.entry_accumulation_times = ttk.Entry(master=self.frame_andor, textvariable=self.accumulation_times, width=WIDTH, justify=tk.CENTER)
+        self.label_times = ttk.Label(master=self.frame_andor, text='回')
+        self.button_acquire = ttk.Button(master=self.frame_andor, text='Acquire', command=self.create_and_start_thread_acq, state=tk.DISABLED, width=WIDTH * 3)
         self.entry_filename = ttk.Entry(master=self.frame_andor, width=WIDTH, justify=tk.CENTER)
         self.entry_filename.insert(0, 'test01')
         self.combobox_extension = ttk.Combobox(master=self.frame_andor, values=('.sif', '.asc'), textvariable=self.extension, width=WIDTH, justify=tk.CENTER)
@@ -162,13 +186,16 @@ class MinimalWindow(tk.Frame):
         self.label_msg.grid(row=0, column=1, columnspan=3)
         self.label_std_temperature.grid(row=1, column=1)
         self.label_temperature.grid(row=1, column=2)
-        self.label_exposure_time.grid(row=4, column=0)
-        self.entry_exposure_time.grid(row=4, column=1)
-        self.label_second.grid(row=4, column=2)
-        self.button_acquire.grid(row=5, column=0, columnspan=3)
-        self.entry_filename.grid(row=6, column=0)
-        self.combobox_extension.grid(row=6, column=1)
-        self.button_save.grid(row=6, column=2)
+        self.label_exposure_time.grid(row=2, column=0)
+        self.entry_exposure_time.grid(row=2, column=1)
+        self.label_second.grid(row=2, column=2)
+        self.label_accumulation_times.grid(row=3, column=0)
+        self.entry_accumulation_times.grid(row=3, column=1)
+        self.label_times.grid(row=3, column=2)
+        self.button_acquire.grid(row=4, column=0, columnspan=3)
+        self.entry_filename.grid(row=5, column=0)
+        self.combobox_extension.grid(row=5, column=1)
+        self.button_save.grid(row=5, column=2)
 
         # frame_auto
         self.label_step = ttk.Label(master=self.frame_auto, text='回数：')
@@ -223,67 +250,99 @@ class MinimalWindow(tk.Frame):
 
     def initialize(self):
         # 初期化
-        if self.sdk.Initialize('') == atmcd_errors.Error_Codes.DRV_SUCCESS:
+        if self.cl.mode == 'RELEASE':
+            if self.sdk.Initialize('') == atmcd_errors.Error_Codes.DRV_SUCCESS:
+                self.msg.set('初期化成功')
+                self.label_msg.config(background='#00ff00')
+                self.button_initialize.config(state=tk.DISABLED)
+            else:
+                self.msg.set('初期化失敗')
+                self.label_msg.config(background='#ff0000')
+        elif self.cl.mode == 'DEBUG':
+            print('skipped initialization')
             self.msg.set('初期化成功')
             self.label_msg.config(background='#00ff00')
             self.button_initialize.config(state=tk.DISABLED)
-        else:
-            self.msg.set('初期化失敗')
-            self.label_msg.config(background='#ff0000')
         # coolerをonに
         self.sdk.SetTemperature(self.cl.temperature)
         self.sdk.CoolerON()
-        self.update_temperature()
+        self.create_and_start_thread_cool()
 
     def update_temperature(self):
-        ret, temperature = self.sdk.GetTemperature()
-        self.temperature.set('現在：' + str(temperature) + '℃')
-        if ret != atmcd_errors.Error_Codes.DRV_TEMP_STABILIZED:
-            self.master.after(1000, self.update_temperature)
-        else:
-            self.msg.set('冷却完了')
-            self.label_temperature.config(background='blue')
-            self.button_acquire.config(state=tk.ACTIVE)
-            self.button_start_auto.config(state=tk.ACTIVE)
-            self.state.set('Ready to Start')
+        if self.cl.mode == 'RELEASE':
+            while True:
+                ret, temperature = self.sdk.GetTemperature()
+                self.temperature.set('現在：' + str(temperature) + '℃')
+                if ret == atmcd_errors.Error_Codes.DRV_TEMP_STABILIZED:
+                    break
+        elif self.cl.mode == 'DEBUG':
+            print('skip updating temperature')
+
+        self.msg.set('冷却完了')
+        self.label_temperature.config(background='blue')
+        self.button_acquire.config(state=tk.ACTIVE)
+        self.button_start_auto.config(state=tk.ACTIVE)
+        self.state.set('Ready to Start')
 
     def prepare_acquisition(self):
-        self.sdk.handle_return(self.sdk.SetAcquisitionMode(atmcd_codes.Acquisition_Mode.SINGLE_SCAN))
-        self.sdk.handle_return(self.sdk.SetReadMode(atmcd_codes.Read_Mode.FULL_VERTICAL_BINNING))
-        self.sdk.handle_return(self.sdk.SetTriggerMode(atmcd_codes.Trigger_Mode.INTERNAL))
-        ret, self.xpixels, ypixels = self.sdk.GetDetector()
-        self.sdk.handle_return(ret)
-        exposure_time = float(self.entry_exposure_time.get())
-        self.sdk.handle_return(self.sdk.SetExposureTime(exposure_time))
-        self.sdk.handle_return(self.sdk.PrepareAcquisition())
+        if self.cl.mode == 'RELEASE':
+            self.sdk.handle_return(self.sdk.SetAcquisitionMode(atmcd_codes.Acquisition_Mode.SINGLE_SCAN))
+            self.sdk.handle_return(self.sdk.SetReadMode(atmcd_codes.Read_Mode.FULL_VERTICAL_BINNING))
+            self.sdk.handle_return(self.sdk.SetTriggerMode(atmcd_codes.Trigger_Mode.INTERNAL))
+            ret, self.xpixels, ypixels = self.sdk.GetDetector()
+            self.sdk.handle_return(ret)
+            self.sdk.handle_return(self.sdk.SetExposureTime(self.exposure_time.get()))  # TODO: 露光時間入力の例外処理
+            self.sdk.handle_return(self.sdk.PrepareAcquisition())
+        elif self.cl.mode == 'DEBUG':
+            print('prepare acquisition')
 
     def acquire(self):
-        self.sdk.handle_return(self.sdk.StartAcquisition())
-        self.sdk.handle_return(self.sdk.WaitForAcquisition())
-        ret, self.spec, first, last = self.sdk.GetImages16(1, 1, self.xpixels)
-        self.sdk.handle_return(ret)
+        self.spec_accumulated = 0
+        for i in range(self.accumulation_times.get()):
+            self.msg.set(f'Acquisition {i + 1}/{self.accumulation_times.get()}')
+            if self.cl.mode == 'RELEASE':
+                self.sdk.handle_return(self.sdk.StartAcquisition())
+                self.sdk.handle_return(self.sdk.WaitForAcquisition())
+                ret, spec, first, last = self.sdk.GetImages16(1, 1, self.xpixels)
+                self.spec_accumulated += np.array(spec)
+                self.sdk.handle_return(ret)
+            elif self.cl.mode == 'DEBUG':
+                print('acquired')
+                spec = np.sin(np.linspace(0, np.random.rand() * 10, 100))
+                self.spec_accumulated += spec
+                time.sleep(0.5)
+        self.msg.set('Finished Acquisition')
+
+    def update_graph(self):
+        if self.spec_accumulated is None or isinstance(self.spec_accumulated, int):
+            pass
+        else:
+            self.draw()
+        self.master.after(1000, self.update_graph)
 
     def draw(self):
-        if self.spec is None:
-            print('No spectrum to draw')
-            return False
         self.ax.cla()
-        self.ax.plot(self.spec)
+        self.ax.plot(self.spec_accumulated)
         self.canvas.draw()
 
-    def prepare_and_acquire_and_draw(self):
+    def prepare_and_acquire(self):
+        self.entry_exposure_time.config(state=tk.DISABLED)
+        self.entry_accumulation_times.config(state=tk.DISABLED)
         self.button_acquire.config(state=tk.DISABLED)
+        self.button_save.config(state=tk.DISABLED)
         self.prepare_acquisition()
         self.acquire()
-        self.draw()
+        self.entry_exposure_time.config(state=tk.ACTIVE)
+        self.entry_accumulation_times.config(state=tk.ACTIVE)
         self.button_acquire.config(state=tk.ACTIVE)
         self.button_save.config(state=tk.ACTIVE)
 
     def save_as(self, filename=None):
         if filename is None:
-            directory = os.getcwd()
-            path = os.path.join(directory, self.entry_filename.get())
+            # saveボタンから呼ばれた時
+            path = os.path.join(self.cl.folder, self.entry_filename.get())
         else:
+            # 自動スキャンの時
             path = filename
 
         if self.extension.get() == '.sif':
@@ -294,12 +353,18 @@ class MinimalWindow(tk.Frame):
             self.state.set('Invalid extension')
 
     def save_as_sif(self, path):
-        self.sdk.handle_return(self.sdk.SaveAsSif(path))
+        if self.cl.mode == 'RELEASE':
+            self.sdk.handle_return(self.sdk.SaveAsSif(path))
+        elif self.cl.mode == 'DEBUG':
+            print('saved')
 
     def save_as_asc(self, path):
-        spec_str = list(map(lambda x: str(x) + '\n', self.spec))
-        with open(path, 'w') as f:
-            f.writelines(spec_str)
+        if self.cl.mode == 'RELEASE':
+            spec_str = list(map(lambda x: str(x) + '\n', self.spec_accumulated))
+            with open(path, 'w') as f:
+                f.writelines(spec_str)
+        elif self.cl.mode == 'DEBUG':
+            print('saved')
 
     def get_start(self):
         x = self.x_st.get()
@@ -327,10 +392,6 @@ class MinimalWindow(tk.Frame):
 
         self.prepare_acquisition()
 
-        folder = os.path.join(os.getcwd(), 'data')
-        if not os.path.exists(folder):
-            os.mkdir(folder)
-
         self.hsc.set_speed_max()
         # 座標計算
         self.start = np.array(self.get_start()).astype('float') / UM_PER_PULSE
@@ -346,9 +407,11 @@ class MinimalWindow(tk.Frame):
         self.progressbar.config(maximum=self.max_step.get())
         self.number.set(1)
 
-        self.create_and_start_thread_acq()
+        self.create_and_start_thread_auto()
 
     def auto_acquire_and_save(self):
+        self.entry_exposure_time.config(state=tk.DISABLED)
+        self.entry_accumulation_times.config(state=tk.DISABLED)
         self.button_acquire.config(state=tk.DISABLED)
         self.button_save.config(state=tk.DISABLED)
         self.button_start_auto.config(state=tk.DISABLED)
@@ -356,11 +419,12 @@ class MinimalWindow(tk.Frame):
         number = 1
         step = self.max_step.get()
         while number <= step:
-            self.state.set(f'Acquisition {number} of {step}')
+            time_left = math.ceil((step - number + 1) * self.exposure_time.get() * 2  * self.accumulation_times.get() / 60)
+            self.state.set(f'Acquisition {number} of {step}... {time_left} minutes left')
 
             point = self.start + (self.goal - self.start) * (number - 1) / (step - 1)
             self.hsc.move_abs(point)
-            self.locations.append(point)
+            self.locations.append(point * UM_PER_PULSE)
             distance = np.linalg.norm(np.array(point - self.start))
             time.sleep(distance / 40000 + 1)  # TODO: 到着を確認してから次に進む
 
@@ -373,15 +437,20 @@ class MinimalWindow(tk.Frame):
             self.locations_to_csv()
 
         self.state.set('Auto Acquisition Finished')
+        self.entry_exposure_time.config(state=tk.ACTIVE)
+        self.entry_accumulation_times.config(state=tk.ACTIVE)
         self.button_acquire.config(state=tk.ACTIVE)
         self.button_save.config(state=tk.ACTIVE)
         self.button_start_auto.config(state=tk.ACTIVE)
 
     def locations_to_csv(self):
-        filename = os.path.join(os.getcwd(), 'data', 'location.csv')
-        with open(filename, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerows(self.locations)
+        if self.cl.mode == 'RELEASE':
+            filename = os.path.join(self.cl.folder, 'location.csv')
+            with open(filename, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(self.locations)
+        else:
+            print('locations saved')
 
     def quit(self):
         if self.cl.mode == 'RELEASE':
