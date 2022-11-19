@@ -22,7 +22,7 @@ class MinimalWindow(tk.Frame):
     def __init__(self, master, config='./config.json'):
         super().__init__(master)
         self.master = master
-        self.master.title('SCANT')
+        self.master.title('RAS')
 
         self.cl = ConfigLoader(config)
 
@@ -275,6 +275,7 @@ class MinimalWindow(tk.Frame):
                 self.temperature.set('現在：' + str(temperature) + '℃')
                 if ret == atmcd_errors.Error_Codes.DRV_TEMP_STABILIZED:
                     break
+                time.sleep(self.cl.dt * 0.001)
         elif self.cl.mode == 'DEBUG':
             print('skip updating temperature')
 
@@ -323,6 +324,7 @@ class MinimalWindow(tk.Frame):
     def draw(self):
         self.ax.cla()
         self.ax.plot(self.spec_accumulated)
+        self.ax.set_xticks([])
         self.canvas.draw()
 
     def prepare_and_acquire(self):
