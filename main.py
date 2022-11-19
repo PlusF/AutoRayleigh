@@ -46,7 +46,7 @@ class MinimalWindow(tk.Frame):
     def open_ports(self):
         if self.cl.mode == 'RELEASE':
             self.sdk = atmcd()
-            self.ser = serial.Serial(self.cl.port, self.cl.baudrate)
+            self.ser = serial.Serial(self.cl.port, self.cl.baudrate, write_timeout=0)
             self.hsc = HSC103Controller(self.ser)
         elif self.cl.mode == 'DEBUG':
             self.sdk = EmptySdk()
